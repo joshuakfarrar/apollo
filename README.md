@@ -41,15 +41,17 @@ Then, we include all the database tables you need to get started with SQL Server
 PS C:\Users\you\apollo\apollo-auth\src\db> .\initialize-database.bat
 ```
 
-Next, since we use a type-safe random string generator for various utilities, your `IOApp` must provide a source of randomness in the form of an `F[Random[F]]` instance, e.g.:
+Next, since we use a type-safe random string generator for various utilities, your `IOApp` must provide a source of randomness in the form of an `Random[F]` instance, e.g.:
 
 ```scala 3
 import cats.effect.std.Random
 import cats.effect.{IO, IOApp}
 
 object Main extends IOApp.Simple:
-  given IO[Random[IO]] = Random.scalaUtilRandom[IO]
-  val run: IO[Unit] = Server.run[IO](config)
+  val run: IO[Unit] = Random.scalaUtilRandom[IO].flatMap { random =>
+    given Random[IO] = random
+    Server.run[IO](config)
+  }
 ```
 
 Then, because we don't want to make assumptions about your user type, or the library you use to send e-mails, you must tell Apollo a few things about your app and configure the Apollo services:
@@ -68,7 +70,7 @@ object Server:
 
   def run[F[_] : Async : Network](
     config: ApplicationConfiguration
-  )(using C: Console[F], F: Monad[F], R: F[Random[F]]): F[Nothing] = {
+  )(using C: Console[F], F: Monad[F], R: Random[F]): F[Nothing] = {
     for {
       xa = getTransactor[F](config)
       userService = UserService.impl[F, User](xa)

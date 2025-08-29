@@ -15,7 +15,7 @@ trait SessionService[F[_], U, I] {
 object SessionService {
   def impl[F[_], U, I](
       xa: Transactor[F]
-  )(using R: F[Random[F]], C: Concurrent[F], H: HasId[U, I]): SessionService[F, U, I] =
+  )(using R: Random[F], C: Concurrent[F], H: HasId[U, I]): SessionService[F, U, I] =
     (user: U) => for {
       token <- EitherT.liftF(generateAlphaNumericString[F](256))
       res <-
