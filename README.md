@@ -59,21 +59,23 @@ Then, because we don't want to make assumptions about your user type, or the lib
 ```scala 3
 object Server:
 
+  private type UserId = UUID
+
   // typeclass instances for User domain object
-  given HasId[User, UUID] = _.id
+  given HasId[User, UserId] = _.id
   given HasPassword[User] = _.password
   given HasEmail[User] = _.email
 
   // database mapping instances for UUID type (Doobie needs this for IDs)
-  given Get[UUID] = Get[String].map(UUID.fromString)
-  given Put[UUID] = Put[String].contramap(_.toString)
+  given Get[UserId] = Get[String].map(UUID.fromString)
+  given Put[UserId] = Put[String].contramap(_.toString)
 
   def run[F[_] : Async : Network](
     config: ApplicationConfiguration
   )(using C: Console[F], F: Monad[F], R: Random[F]): F[Nothing] = {
     for {
       xa = getTransactor[F](config)
-      userService = UserService.impl[F, User, UUID](xa)
+      userService = UserService.impl[F, User, UserId](xa)
         
       // we may eventually include my Mailgun implementation as the default Mailer
       mailService = new MailService[F, Email, Unit] {
@@ -99,20 +101,20 @@ object Server:
           EmailAddress(to),
           "Reset your password",
           Some(s"Reset your password (text): http://localhost:8080/reset/${code}"),
-          Some(s"Reset your password (html): http://localhost:8080/reset/${code}")
+          Some(s"Reset your password (html): <a href='http://localhost:8080/reset/${code}'>http://localhost:8080/reset/${code}</a>")
         )
 
         override def send(msg: Email): EitherT[F, Throwable, Unit] = mailgun.send(msg).map(_ => ())
       }
 
-      confirmationService = ConfirmationService.impl[F, User, UUID](xa)
-      resetService = ResetService.impl[F, User, UUID](xa)
-      sessionService = SessionService.impl[F, User, UUID](xa)
+      confirmationService = ConfirmationService.impl[F, User, UserId](xa)
+      resetService = ResetService.impl[F, User, UserId](xa)
+      sessionService = SessionService.impl[F, User, UserId](xa)
 
       httpApp = FlashMiddleware
         .httpRoutes[F](
           webjarServiceBuilder[F].toRoutes
-          <+> AuthRoutes.routes[F, User, Email, UUID](userService, confirmationService, mailService, sessionService, resetService)
+          <+> AuthRoutes.routes[F, User, Email, UserId](userService, confirmationService, mailService, sessionService, resetService)
         ).orNotFound
 
       _ <-
