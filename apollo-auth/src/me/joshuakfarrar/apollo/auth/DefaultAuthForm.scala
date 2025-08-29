@@ -4,6 +4,8 @@ import scalatags.Text
 import scalatags.Text.all._
 
 object DefaultAuthForm:
+  case class Flash(cssClass: String, message: String)
+
   enum Focus:
     case Login
     case Register
@@ -16,16 +18,16 @@ object DefaultAuthForm:
 
   def page(
       focus: Focus = Focus.Login,
-      flash: Option[String] = None
+      flash: Option[Flash] = None
   ): Text.TypedTag[String] = div(
-    h2(id := "title", "apollo"),
+    h2(id := "title", "Sign in"),
     p(
-      "uwu >:3 potato"
+      "Welcome to Apollo!"
     ),
     div(
       style := "max-width: 26rem",
-      flash.map { message =>
-        div(`class` := "alert alert-danger", role := "alert", message + ".")
+      flash.map { f =>
+        div(`class` := "alert " + f.cssClass, role := "alert", f.message + ".")
       },
       ul(
         `class` := "nav nav-pills nav-justified mb-3",
@@ -110,7 +112,7 @@ object DefaultAuthForm:
               ),
               div(
                 `class` := "col-md-6 d-flex justify-content-center",
-                a(href := "#", "Forgot password?")
+                a(href := "/reset", "Forgot password?")
               )
             ),
             div(

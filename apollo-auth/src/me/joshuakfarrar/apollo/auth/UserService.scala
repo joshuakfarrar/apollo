@@ -9,7 +9,7 @@ import doobie.implicits.*
 
 import java.util.UUID
 
-trait UserService[F[_], U] {
+trait UserService[F[_], U, I] {
   def createUser(
       name: String,
       email: String,
@@ -17,11 +17,18 @@ trait UserService[F[_], U] {
   ): EitherT[F, Throwable, U]
 
   def fetchUser(email: String): EitherT[F, Throwable, U]
+
+  def updatePassword(
+      userId: I,
+      password: String
+  ): EitherT[F, Throwable, Unit]
 }
 
 object UserService {
-  def impl[F[_], U](xa: Transactor[F])(using S: Sync[F], R: Read[U]): UserService[F, U] =
-    new UserService[F, U] {
+  def impl[F[_], U, I: Put](
+      xa: Transactor[F]
+  )(using S: Sync[F], R: Read[U], H: HasId[U, I]): UserService[F, U, I] =
+    new UserService[F, U, I] {
       def insertUser(
           name: String,
           email: String,
@@ -39,12 +46,12 @@ object UserService {
           password: String
       ): EitherT[F, Throwable, U] = {
         for {
-          pw   <- EitherT.liftF(
+          pw <- EitherT.liftF(
             S.delay(
               Password.hash(password).withArgon2().getResult
             )
           )
-          _    <- insertUser(name, email, pw)
+          _ <- insertUser(name, email, pw)
           user <- fetchUser(email)
         } yield user
       }
@@ -57,5 +64,20 @@ object UserService {
             .transact(xa)
             .attempt
         }
+
+      override def updatePassword(
+          userId: I,
+          password: String
+      ): EitherT[F, Throwable, Unit] =
+        for {
+          pw <- EitherT.liftF(
+            S.delay(
+              Password.hash(password).withArgon2().getResult
+            )
+          )
+          _ <- EitherT { sql"update [webapp].[dbo].[users] set password = ${pw} where id = ${userId}".update.run
+            .transact(xa)
+            .attempt }
+        } yield ()
     }
 }

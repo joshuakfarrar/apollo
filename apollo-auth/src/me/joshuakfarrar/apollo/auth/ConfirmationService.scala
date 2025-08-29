@@ -1,6 +1,5 @@
 package me.joshuakfarrar.apollo.auth
 
-import cats.Monad
 import cats.data.{EitherT, OptionT}
 import cats.effect.Concurrent
 import cats.effect.std.Random
@@ -19,7 +18,11 @@ object ConfirmationService {
 
   def impl[F[_], U, I](
       xa: Transactor[F]
-  )(using R: Random[F], C: Concurrent[F], H: HasId[U, I]): ConfirmationService[F, U, I] =
+  )(using
+      R: Random[F],
+      C: Concurrent[F],
+      H: HasId[U, I]
+  ): ConfirmationService[F, U, I] =
     new ConfirmationService[F, U, I] {
 
       override def createConfirmation(
