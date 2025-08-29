@@ -73,7 +73,7 @@ object Server:
   )(using C: Console[F], F: Monad[F], R: Random[F]): F[Nothing] = {
     for {
       xa = getTransactor[F](config)
-      userService = UserService.impl[F, User](xa)
+      userService = UserService.impl[F, User, UUID](xa)
         
       // we may eventually include my Mailgun implementation as the default Mailer
       mailService = new MailService[F, Email, Unit] {
@@ -94,19 +94,26 @@ object Server:
           Some(s"Confirm your account (html): <a href='http://localhost:8080/confirm/${code}'>http://localhost:8080/confirm/${code}</a>")
         )
 
+        override def resetEmail(to: String, code: String): Email = Email(
+          EmailAddress(config.mailgunSender),
+          EmailAddress(to),
+          "Reset your password",
+          Some(s"Reset your password (text): http://localhost:8080/reset/${code}"),
+          Some(s"Reset your password (html): http://localhost:8080/reset/${code}")
+        )
+
         override def send(msg: Email): EitherT[F, Throwable, Unit] = mailgun.send(msg).map(_ => ())
       }
 
       confirmationService = ConfirmationService.impl[F, User, UUID](xa)
+      resetService = ResetService.impl[F, User, UUID](xa)
       sessionService = SessionService.impl[F, User, UUID](xa)
 
-      // we use cookie-based Flash Messages to send errors back to the form, check out the Nice Feature
       httpApp = FlashMiddleware
         .httpRoutes[F](
           webjarServiceBuilder[F].toRoutes
-            <+> AuthRoutes.routes[F, User, Email, UUID](userService, confirmationService, mailService, sessionService) // adding our routes is as simple as configuring a service
-        )
-        .orNotFound
+          <+> AuthRoutes.routes[F, User, Email, UUID](userService, confirmationService, mailService, sessionService, resetService)
+        ).orNotFound
 
       _ <-
         EmberServerBuilder
