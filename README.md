@@ -14,15 +14,34 @@ Long-term, we'd like to also support Omniauth and all functionality of the stand
 
 ## Getting Started
 
-Since there's no module yet, and for code review, we're only including the necessary startup instructions:
-
-First, we include all the database tables you need to get started with SQL Server. Simply `cd` to `apollo-auth\src\main\resources\db`:
+First, pull down the code and add Apollo to your local ivy cache:
 
 ```shell
-PS C:\Users\you\http4s-app\apollo-auth\src\main\resources\db> .\initialize-database.bat
+PS C:\Users\you\apollo> .\mill.bat apollo-auth.publishLocal
 ```
 
-Next, since randomness is necessary, your `IOApp` must provide an `F[Random[F]]` instance, e.g.:
+This will allow you to add Apollo to your Http4s application as a dependency, for example:
+
+```scala 3
+object webApp extends SbtModule {
+  def scalaVersion = "3.3.3"
+
+  def mainClass = Some("Main")
+
+  def ivyDeps = Agg(
+    // your dependencies go here
+    ivy"me.joshuakfarrar:apollo-auth:0.1.0-SNAPSHOT"
+  )
+}
+```
+
+Then, we include all the database tables you need to get started with SQL Server. Simply `cd` to `.\apollo\apollo-auth\src\db`:
+
+```shell
+PS C:\Users\you\apollo\apollo-auth\src\db> .\initialize-database.bat
+```
+
+Next, since we use a type-safe random string generator for various utilities, your `IOApp` must provide a source of randomness in the form of an `F[Random[F]]` instance, e.g.:
 
 ```scala 3
 import cats.effect.std.Random
@@ -97,3 +116,7 @@ object Server:
     } yield ()
   }.useForever
 ```
+
+We promise we'll get this on Maven Central and add generators to automate some of the setup soon. Also be on the look out for a Giter8 template.
+
+🎉
