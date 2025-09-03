@@ -1,10 +1,10 @@
 package me.joshuakfarrar.apollo.auth
 
 import cats.effect.Async
-import org.http4s.{Request, Response}
-import org.http4s.headers.Cookie
 import cats.implicits.*
 import org.http4s.dsl.Http4sDsl
+import org.http4s.headers.Cookie
+import org.http4s.{Request, Response}
 
 object CookieHelpers:
 
@@ -21,7 +21,7 @@ object CookieHelpers:
     }
   }
 
-  def deserializeFlashCookie[F[_]: Async](
+  private def deserializeFlashCookie[F[_]: Async](
       request: Request[F]
   ): F[Either[Throwable, Option[Map[String, String]]]] =
     extractCookie(request, "flash") match {
@@ -31,7 +31,7 @@ object CookieHelpers:
         Async[F].pure(Right(None))
     }
 
-  def extractCookie[F[_]](
+  private def extractCookie[F[_]](
       request: Request[F],
       cookieName: String
   ): Option[String] =

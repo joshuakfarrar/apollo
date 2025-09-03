@@ -25,6 +25,7 @@ object `apollo-auth` extends ScalaModule with PublishModule {
 
   def ivyDeps = Agg(
     ivy"com.microsoft.sqlserver:mssql-jdbc:12.9.0.jre11-preview",
+    ivy"org.http4s::http4s-ember-server:$Http4sVersion",
     ivy"org.http4s::http4s-ember-client:$Http4sVersion",
     ivy"org.http4s::http4s-dsl:$Http4sVersion",
     ivy"org.typelevel::cats-core:2.13.0",

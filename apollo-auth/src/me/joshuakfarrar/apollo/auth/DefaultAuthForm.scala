@@ -1,7 +1,8 @@
 package me.joshuakfarrar.apollo.auth
 
+import org.http4s.server.middleware.CSRF.{CSRFToken, unlift}
 import scalatags.Text
-import scalatags.Text.all._
+import scalatags.Text.all.*
 
 object DefaultAuthForm:
   case class Flash(cssClass: String, message: String)
@@ -17,6 +18,7 @@ object DefaultAuthForm:
     s"tab-pane fade${if (focus == displayIf) " show active" else ""}"
 
   def page(
+      csrfToken: String,
       focus: Focus = Focus.Login,
       flash: Option[Flash] = None
   ): Text.TypedTag[String] = div(
@@ -69,7 +71,11 @@ object DefaultAuthForm:
           form(
             `action` := "/login",
             `method` := "POST",
-            `enctype` := "multipart/form-data",
+            input(
+              `type` := "hidden",
+              `name` := "_csrf",
+              `value` := csrfToken
+            ),
             div(
               `class` := "form-outline mb-4",
               input(
@@ -132,7 +138,11 @@ object DefaultAuthForm:
           form(
             `action` := "/register",
             `method` := "POST",
-            `enctype` := "multipart/form-data",
+            input(
+              `type` := "hidden",
+              `name` := "_csrf",
+              `value` := csrfToken
+            ),
             div(
               `class` := "form-outline mb-4",
               input(

@@ -5,6 +5,7 @@ import scalatags.Text.all.*
 
 object DefaultChangePasswordForm:
   def page(
+      csrfToken: String,
       flash: Option[String] = None
   ): Text.TypedTag[String] = div(
     h2(id := "title", "Password reset"),
@@ -24,7 +25,11 @@ object DefaultChangePasswordForm:
           role := "tabpanel",
           form(
             `method` := "POST",
-            `enctype` := "multipart/form-data",
+            input(
+              `type` := "hidden",
+              `name` := "_csrf",
+              `value` := csrfToken
+            ),
             div(
               `class` := "form-outline mb-4",
               input(

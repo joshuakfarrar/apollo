@@ -56,6 +56,8 @@ object Main extends IOApp.Simple:
 
 Then, because we don't want to make assumptions about your user type, or the library you use to send e-mails, you must tell Apollo a few things about your app and configure the Apollo services:
 
+> ⚠️ Pay special attention to the CSRF configuration below, it is currently not optional and Http4s' CSRF middleware documentation and defaults appear meant for single-page applications, not server-rendered ones!
+
 ```scala 3
 object Server:
 
@@ -73,18 +75,39 @@ object Server:
   def run[F[_] : Async : Network](
     config: ApplicationConfiguration
   )(using C: Console[F], F: Monad[F], R: Random[F]): F[Nothing] = {
-    for {
-      xa = getTransactor[F](config)
-      userService = UserService.impl[F, User, UserId](xa)
-        
-      // we may eventually include my Mailgun implementation as the default Mailer
-      mailService = new MailService[F, Email, Unit] {
-        val mailgun = new Mailgun(
-          domain = Uri
-            .fromString(Mailgun.uri(config.mailgunDomain))
-            .fold(throw _, identity),
-          apiKey = config.mailgunKey
+    for { 
+      // csrf configuration
+      cookieName = "csrf-token"
+      csrfField = "_csrf"
+      key  <- Resource.eval(CSRF.generateSigningKey[F]())
+      csrfTokenKey <- Resource.eval(Key.newKey[F, String])
+  
+      csrf = CSRF.withDefaultOriginCheckFormAware[F, F](
+          csrfField,           // fieldName - the form field name to look for
+          FunctionK.id[F]      // nt: F ~> F (natural transformation, use identity)
+        )(
+          key,                 // your signing key
+          "localhost",         // host
+          Uri.Scheme.http,     // scheme
+          Some(8080)           // port
         )
+        .withCookieName(cookieName)
+        .withCookieDomain(Some("localhost"))
+        .withCookiePath(Some("/"))
+        .build
+        
+        // service configuration
+        xa = getTransactor[F](config)
+        userService = UserService.impl[F, User, UserId](xa)
+          
+        // we may eventually include my Mailgun implementation as the default Mailer
+        mailService = new MailService[F, Email, Unit] {
+          val mailgun = new Mailgun(
+            domain = Uri
+              .fromString(Mailgun.uri(config.mailgunDomain))
+              .fold(throw _, identity),
+            apiKey = config.mailgunKey
+          )
 
         // you can customize the e-mails we send your users by simply overriding a function!
         // choose between sending html and plaintext
@@ -114,7 +137,7 @@ object Server:
       httpApp = FlashMiddleware
         .httpRoutes[F](
           webjarServiceBuilder[F].toRoutes
-          <+> AuthRoutes.routes[F, User, Email, UserId](userService, confirmationService, mailService, sessionService, resetService)
+          <+> AuthRoutes.routes[F, User, Email, UserId](csrfTokenKey, userService, confirmationService, mailService, sessionService, resetService) // don't forget the csrfTokenKey!
         ).orNotFound
 
       _ <-
@@ -122,7 +145,7 @@ object Server:
           .default[F]
           .withHost(ipv4"0.0.0.0")
           .withPort(port"8080")
-          .withHttpApp(httpApp)
+          .withHttpApp(CSRFMiddleware.validate[F](csrf, csrfTokenKey)(httpApp)) // Apollo provides a CSRFMiddleware so its routes, and yours, can access the CSRF token in any Request[F]
           .build
     } yield ()
   }.useForever

@@ -9,14 +9,16 @@ import me.joshuakfarrar.apollo.auth.CookieHelpers.withFlashCookie
 import me.joshuakfarrar.apollo.auth.DefaultAuthForm.Flash
 import me.joshuakfarrar.apollo.auth.ScalatagsInstances.*
 import org.http4s.dsl.Http4sDsl
-import org.http4s.headers.{Cookie, Location}
+import org.http4s.headers.Location
 import org.http4s.implicits.uri
-import org.http4s.multipart.{Multipart, Part}
-import org.http4s.{EntityDecoder, HttpRoutes, Response, ResponseCookie, SameSite}
-import org.http4s.EntityEncoder
+import org.http4s.server.middleware.CSRF
+import org.http4s.{EntityEncoder, HttpRoutes, Response, ResponseCookie, SameSite, UrlForm}
+import org.typelevel.vault.{Key, LookupKey}
 
 object AuthRoutes:
   def routes[F[_]: Async, U: HasPassword: HasEmail, E, I](
+      csrfTokenKey: Key[String],
+      Csrf: CSRF[F, F],
       UserService: UserService[F, U, I],
       ConfirmationService: ConfirmationService[F, U, I],
       MailService: MailService[F, E, Unit],
@@ -26,14 +28,12 @@ object AuthRoutes:
     val dsl = new Http4sDsl[F] {}
     import dsl.*
 
-    given EntityEncoder[F, Reset[I]] =
-      EntityEncoder.stringEncoder[F].contramap(_.toString)
-
     def renderLogin(
-        focus: DefaultAuthForm.Focus,
-        flash: Option[Flash] = None
+                     csrfToken: String,
+                     focus: DefaultAuthForm.Focus,
+                     flash: Option[Flash] = None
     ) =
-      DefaultLayout.render(DefaultAuthForm.page(focus, flash))
+      DefaultLayout.render(DefaultAuthForm.page(csrfToken, focus, flash))
 
     def redirectWithFlashMessages(
         flashMessages: Map[String, String]
@@ -124,37 +124,25 @@ object AuthRoutes:
     }
 
     HttpRoutes.of[F]:
-      case request @ GET -> Root =>
-        withFlashCookie(request) { cookie =>
-          val location = cookie.flatMap(_.get("location"))
-          val focus = location match {
-            case Some("register") => DefaultAuthForm.Focus.Register
-            case _ => DefaultAuthForm.Focus.Login
+      case request @ GET -> Root => {
+        request.attributes.lookup(csrfTokenKey) match {
+          case Some(token) => withFlashCookie(request) { cookie =>
+            val location = cookie.flatMap(_.get("location"))
+            val focus = location match {
+              case Some("register") => DefaultAuthForm.Focus.Register
+              case _ => DefaultAuthForm.Focus.Login
+            }
+            val cssClass = cookie.flatMap(_.get("cssClass"))
+            val flash = for {
+              message <- cookie.flatMap(_.get("message"))
+            } yield Flash(cssClass = cssClass.getOrElse("alert-danger"), message = message)
+            Ok(renderLogin(token, focus, flash))
           }
-          val cssClass = cookie.flatMap(_.get("cssClass"))
-          val flash = for {
-            message <- cookie.flatMap(_.get("message"))
-          } yield Flash(cssClass = cssClass.getOrElse("alert-danger"), message = message)
-          Ok(renderLogin(focus, flash))
+          case None => Forbidden()
         }
+      }
       case request @ POST -> Root / "register" =>
         case class RegistrationForm(name: String, email: String, password: String, confirmPassword: String)
-
-        def extractRegistrationForm(multipart: Multipart[F]): Option[(Part[F], Part[F], Part[F], Part[F])] =
-          for {
-            namePart <- multipart.parts.find(_.name.contains("name"))
-            emailPart <- multipart.parts.find(_.name.contains("email"))
-            passwordPart <- multipart.parts.find(_.name.contains("password"))
-            confirmPasswordPart <- multipart.parts.find(_.name.contains("confirmPassword"))
-          } yield (namePart, emailPart, passwordPart, confirmPasswordPart)
-
-        def parseFormData(namePart: Part[F], emailPart: Part[F], passwordPart: Part[F], confirmPasswordPart: Part[F]): F[RegistrationForm] =
-          for {
-            name <- namePart.bodyText.compile.string
-            email <- emailPart.bodyText.compile.string
-            password <- passwordPart.bodyText.compile.string
-            confirmPassword <- confirmPasswordPart.bodyText.compile.string
-          } yield RegistrationForm(name, email, password, confirmPassword)
 
         def validateRegistrationForm(form: RegistrationForm): Option[String] =
           if (form.name.isEmpty)
@@ -164,41 +152,29 @@ object AuthRoutes:
           else
             None
 
+        def parseFormData(form: UrlForm): Option[RegistrationForm] =
+          for {
+            name <- form.getFirst("name")
+            email <- form.getFirst("email")
+            password <- form.getFirst("password")
+            confirmPassword <- form.getFirst("confirmPassword")
+          } yield RegistrationForm(name, email, password, confirmPassword)
+
         request
-          .as[Multipart[F]]
-          .flatMap { multipart =>
-            extractRegistrationForm(multipart) match {
-              case Some((namePart, emailPart, passwordPart, confirmPasswordPart)) =>
-                parseFormData(namePart, emailPart, passwordPart, confirmPasswordPart).flatMap { form =>
-                  validateRegistrationForm(form) match {
-                    case Some(error) => registrationRedirectWithError(error)
-                    case None => createUser(form.name, form.email, form.password)
-                  }
+          .as[UrlForm]
+          .flatMap { form =>
+            parseFormData(form) match {
+              case Some(parsed) =>
+                validateRegistrationForm(parsed) match {
+                  case Some(error) => registrationRedirectWithError(error)
+                  case None => createUser(parsed.name, parsed.email, parsed.password)
                 }
-              case None =>
-                registrationRedirectWithError(
-                  "Missing name, email, password, or password confirmation"
-                )
+              case None => registrationRedirectWithError(
+                "Missing name, email, password, or password confirmation"
+              )
             }
           }
       case request @ POST -> Root / "login" =>
-        def extractCredentials(multipart: Multipart[F]): Option[(Part[F], Part[F])] =
-          for {
-            emailPart <- multipart.parts.find(_.name.contains("email"))
-            passwordPart <- multipart.parts.find(_.name.contains("password"))
-          } yield (emailPart, passwordPart)
-
-        def authenticateUser(emailPart: Part[F], passwordPart: Part[F]): EitherT[F, Throwable, (U, Boolean)] =
-          for {
-            email <- EitherT.liftF(emailPart.bodyText.compile.string)
-            password <- EitherT.liftF(passwordPart.bodyText.compile.string)
-            user <- UserService.fetchUser(email)
-          } yield (
-            user,
-            Password
-              .check(password, implicitly[HasPassword[U]].password(user))
-              .withArgon2()
-          )
 
         def createSessionResponse(user: U): F[Response[F]] =
           SessionService.createSession(user).value.flatMap {
@@ -221,20 +197,35 @@ object AuthRoutes:
               )
           }
 
+        def extractCredentials(form: UrlForm): Option[(String, String)] =
+          for {
+            email <- form.getFirst("email")
+            password <- form.getFirst("password")
+          } yield (email, password)
+
+        def authenticateUser(email: String, password: String): EitherT[F, Throwable, (U, Boolean)] =
+          for {
+            user <- UserService.fetchUser(email)
+          } yield (
+            user,
+            Password
+              .check(password, implicitly[HasPassword[U]].password(user))
+              .withArgon2()
+          )
+
         request
-          .as[Multipart[F]]
-          .flatMap { multipart =>
-            extractCredentials(multipart) match {
-              case Some((emailPart, passwordPart)) =>
-                authenticateUser(emailPart, passwordPart).value.flatMap {
+          .as[UrlForm]
+          .flatMap { form =>
+            extractCredentials(form) match {
+              case Some((email, password)) =>
+                authenticateUser(email, password).value.flatMap {
                   case Right((user, authenticated)) =>
                     if (authenticated) createSessionResponse(user)
                     else loginRedirectWithError("Could not find user with that email or password")
                   case Left(_) =>
                     loginRedirectWithError("Could not find user with that email or password")
                 }
-              case None =>
-                loginRedirectWithError("Missing email or password")
+              case None => loginRedirectWithError("Missing email or password")
             }
           }
       case GET -> Root / "confirm" / code =>
@@ -243,17 +234,18 @@ object AuthRoutes:
           case _           => loginRedirectWithSuccess("Account confirmed! You can now log in")
         }
       case request @ GET -> Root / "reset" =>
-        withFlashCookie(request) {
-          case None => Ok(DefaultLayout.render(DefaultResetRequestForm.page(None)))
-          case Some(cookie) => Ok(DefaultLayout.render(DefaultResetRequestForm.page(Some(DefaultResetRequestForm.Flash(cssClass = "alert-danger", message = cookie.getOrElse("message", ""))))))
+        request.attributes.lookup(csrfTokenKey) match {
+          case Some(token) => withFlashCookie(request) {
+            case None => Ok(DefaultLayout.render(DefaultResetRequestForm.page(token, None)))
+            case Some(cookie) => Ok(DefaultLayout.render(DefaultResetRequestForm.page(token, Some(DefaultResetRequestForm.Flash(cssClass = "alert-danger", message = cookie.getOrElse("message", ""))))))
+          }
+          case None => Forbidden()
         }
       case request @ POST -> Root / "reset" =>
-        request.as[Multipart[F]].flatMap { multipart =>
-          val emailOpt = multipart.parts.find(_.name.contains("email"))
-          emailOpt match {
-            case Some(emailPart) => {
+        request.as[UrlForm].flatMap { form =>
+          form.getFirst("email") match {
+            case Some(email) => {
               val result = for {
-                email <- EitherT.liftF(emailPart.bodyText.compile.string)
                 user <- UserService.fetchUser(email)
                 code <- ResetService.createReset(user)
                 _ <- MailService.send(
@@ -263,47 +255,35 @@ object AuthRoutes:
               } yield code
 
               result.value.flatMap { _ =>
-                Ok(
-                  DefaultLayout.render(
-                    DefaultResetRequestForm.page(
-                      Some(
-                        DefaultResetRequestForm.Flash(cssClass = "alert-info", message = "A password reset e-mail has been sent to the provided user's email address, if they exist")
-                      )
-                    )
-                  )
-                )
+                // todo: replace with alert-info
+                resetRedirectWithError("A password reset e-mail has been sent to the provided user's email address, if they exist")
               }
             }
-            case None =>
-              Ok(
-                DefaultLayout.render(
-                  DefaultResetRequestForm
-                    .page(Some(DefaultResetRequestForm.Flash(cssClass = "alert-danger", message = "Form processing error, try submitting again")))
-                )
-              )
+            case None => resetRedirectWithError("Invalid e-mail address provided")
           }
         }
-      case GET -> Root / "reset" / code => ResetService.getReset(code).value.flatMap {
-        case Left(_) => resetRedirectWithError("Invalid or expired reset code")
-        case Right(reset) => Ok(
-          DefaultLayout.render(
-            DefaultChangePasswordForm
-              .page(None)
-          )
-        )
-      }
+      case request @ GET -> Root / "reset" / code =>
+        request.attributes.lookup(csrfTokenKey) match {
+          case Some(token) =>
+            ResetService
+              .getReset(code)
+              .foldF(error => resetRedirectWithError(s"Invalid or expired reset code ${error.getMessage}"),
+                reset =>
+                  Ok(
+                    DefaultLayout.render(
+                      DefaultChangePasswordForm
+                        .page(token.toString, None)
+                    )
+                  )
+              )
+          case None => Forbidden()
+        }
       case request @ POST -> Root / "reset" / code => {
 
-        def extractNewPassword(multipart: Multipart[F]): Option[(Part[F], Part[F])] =
+        def extractNewPassword(form: UrlForm): Option[(String, String)] =
           for {
-            passwordPart <- multipart.parts.find(_.name.contains("password"))
-            confirmPasswordPart <- multipart.parts.find(_.name.contains("confirmPassword"))
-          } yield (passwordPart, confirmPasswordPart)
-
-        def parsePasswordData(passwordPart: Part[F], confirmPasswordPart: Part[F]): F[(String, String)] =
-          for {
-            password <- passwordPart.bodyText.compile.string
-            confirmPassword <- confirmPasswordPart.bodyText.compile.string
+            password <- form.getFirst("password")
+            confirmPassword <- form.getFirst("confirmPassword")
           } yield (password, confirmPassword)
 
         def validatePasswords(password: String, confirmPassword: String): Option[String] =
@@ -327,6 +307,7 @@ object AuthRoutes:
               Ok(
                 DefaultLayout.render(
                   DefaultChangePasswordForm.page(
+                    "test",
                     Some(s"Failed to update password: ${error.getMessage}")
                   )
                 )
@@ -336,7 +317,7 @@ object AuthRoutes:
         def renderPasswordForm(error: Option[String] = None): F[Response[F]] =
           Ok(
             DefaultLayout.render(
-              DefaultChangePasswordForm.page(error)
+              DefaultChangePasswordForm.page("test", error)
             )
           )
 
@@ -344,20 +325,17 @@ object AuthRoutes:
           case Left(_) =>
             renderPasswordForm(Some("Invalid or expired reset code"))
           case Right(reset) =>
-            request.as[Multipart[F]].flatMap { multipart =>
-              extractNewPassword(multipart) match {
-                case Some((passwordPart, confirmPasswordPart)) =>
-                  parsePasswordData(passwordPart, confirmPasswordPart).flatMap { (password, confirmPassword) =>
-                    validatePasswords(password, confirmPassword) match {
-                      case Some(validationError) =>
-                        renderPasswordForm(Some(validationError))
-                      case None =>
-                        processPasswordReset(reset, password)
-                    }
+            request.as[UrlForm].flatMap { form =>
+              extractNewPassword(form) match {
+                case Some((password, confirmPassword)) =>
+                  validatePasswords(password, confirmPassword) match {
+                    case Some(validationError) =>
+                      renderPasswordForm(Some(validationError))
+                    case None =>
+                      processPasswordReset(reset, password)
                   }
-                case None =>
-                    renderPasswordForm(Some("Missing password or password confirmation"))
-                }
+                case None => renderPasswordForm(Some("Missing password or password confirmation"))
               }
+            }
           }
       }

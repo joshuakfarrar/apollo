@@ -1,5 +1,6 @@
 package me.joshuakfarrar.apollo.auth
 
+import org.http4s.server.middleware.CSRF.CSRFToken
 import scalatags.Text
 import scalatags.Text.all.*
 
@@ -7,7 +8,8 @@ object DefaultResetRequestForm:
   case class Flash(cssClass: String, message: String)
 
   def page(
-      flash: Option[Flash] = None
+            csrfToken: String,
+            flash: Option[Flash] = None
   ): Text.TypedTag[String] = div(
     h2(id := "title", "Password reset"),
     p(
@@ -27,7 +29,11 @@ object DefaultResetRequestForm:
           form(
             `action` := "/reset",
             `method` := "POST",
-            `enctype` := "multipart/form-data",
+            input(
+              `type` := "hidden",
+              `name` := "_csrf",
+              `value` := csrfToken
+            ),
             div(
               `class` := "form-outline mb-4",
               input(
