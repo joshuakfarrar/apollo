@@ -14,7 +14,15 @@ Long-term, we'd like to also support Omniauth and all functionality of the stand
 
 ## Getting Started
 
-Use our fancy new [Giter8](https://www.foundweekends.org/giter8) template!
+First, pull down Apollo and add it to your local ivy cache:
+
+```shell
+$ git clone https://github.com/joshuakfarrar/apollo
+$ cd apollo
+$ .\mill.bat --no-server apollo-auth.publishLocal
+```
+
+Then, use our fancy new [Giter8](https://www.foundweekends.org/giter8) template!
 
 ```shell
 $ .\mill.bat --interactive init joshuakfarrar/apollo.g8
