@@ -1,6 +1,6 @@
 package build
 
-import mill._, scalalib._, publish._
+import mill.*, scalalib.*, publish.*
 
 val Http4sVersion = "0.23.29"
 val CirceVersion = "0.14.10"
@@ -10,7 +10,7 @@ object `apollo-auth` extends ScalaModule with PublishModule {
   def artifactId = "apollo-auth"
   def publishVersion = "0.1.0-SNAPSHOT"
 
-  def pomSettings: Target[PomSettings] = PomSettings(
+  def pomSettings = PomSettings(
     organization = "me.joshuakfarrar",
     description = "An authentication solution for Http4s",
     url = "https://github.com/joshuakfarrar/apollo",
@@ -23,20 +23,20 @@ object `apollo-auth` extends ScalaModule with PublishModule {
     ))
   )
 
-  def ivyDeps = Agg(
-    ivy"com.microsoft.sqlserver:mssql-jdbc:12.9.0.jre11-preview",
-    ivy"org.http4s::http4s-ember-server:$Http4sVersion",
-    ivy"org.http4s::http4s-ember-client:$Http4sVersion",
-    ivy"org.http4s::http4s-dsl:$Http4sVersion",
-    ivy"org.typelevel::cats-core:2.13.0",
-    ivy"org.typelevel::cats-effect:3.5.4",
-    ivy"com.password4j:password4j:1.8.2",
-    ivy"org.tpolecat::doobie-core:1.0.0-RC6",
-    ivy"io.circe::circe-generic:$CirceVersion",
-    ivy"org.http4s::http4s-circe:$Http4sVersion",
-    ivy"co.fs2::fs2-core:3.11.0",
-    ivy"co.fs2::fs2-io:3.11.0",
-    ivy"com.lihaoyi::scalatags:0.13.1",
-    ivy"com.lihaoyi::upickle:4.1.0",
+  def mvnDeps = Seq(
+    mvn"com.microsoft.sqlserver:mssql-jdbc:12.9.0.jre11-preview",
+    mvn"org.http4s::http4s-ember-server:$Http4sVersion",
+    mvn"org.http4s::http4s-ember-client:$Http4sVersion",
+    mvn"org.http4s::http4s-dsl:$Http4sVersion",
+    mvn"org.typelevel::cats-core:2.13.0",
+    mvn"org.typelevel::cats-effect:3.5.4",
+    mvn"com.password4j:password4j:1.8.2",
+    mvn"org.tpolecat::doobie-core:1.0.0-RC6",
+    mvn"io.circe::circe-generic:$CirceVersion",
+    mvn"org.http4s::http4s-circe:$Http4sVersion",
+    mvn"co.fs2::fs2-core:3.11.0",
+    mvn"co.fs2::fs2-io:3.11.0",
+    mvn"com.lihaoyi::scalatags:0.13.1",
+    mvn"com.lihaoyi::upickle:4.1.0",
   )
 }
