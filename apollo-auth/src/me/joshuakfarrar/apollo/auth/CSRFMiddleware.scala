@@ -2,7 +2,7 @@ package me.joshuakfarrar.apollo.auth
 
 import cats.data.Kleisli
 import cats.effect.Sync
-import org.http4s.{Method, Request, Response, Status}
+import org.http4s.{Request, Response, Status}
 import org.http4s.headers.Cookie as HCookie
 import org.http4s.server.middleware.CSRF
 import org.typelevel.vault.Key
