@@ -3,10 +3,12 @@ package build
 import mill.*, scalalib.*, publish.*
 
 val Http4sVersion = "1.0.0-M44"
-val CirceVersion = "0.14.10"
+val CirceVersion = "0.14.14"
+val DoobieVersion = "1.0.0-RC10"
+val Fs2Version = "3.12.2"
 
 object `apollo-auth` extends ScalaModule with PublishModule {
-  def scalaVersion = "3.3.3"
+  def scalaVersion = "3.3.6"
   def artifactId = "apollo-auth"
   def publishVersion = "0.1.0-SNAPSHOT"
 
@@ -24,18 +26,18 @@ object `apollo-auth` extends ScalaModule with PublishModule {
   )
 
   def mvnDeps = Seq(
-    mvn"com.microsoft.sqlserver:mssql-jdbc:12.9.0.jre11-preview",
+    mvn"com.microsoft.sqlserver:mssql-jdbc:13.2.0.jre11",
     mvn"org.http4s::http4s-ember-server:$Http4sVersion",
     mvn"org.http4s::http4s-ember-client:$Http4sVersion",
     mvn"org.http4s::http4s-dsl:$Http4sVersion",
     mvn"org.typelevel::cats-core:2.13.0",
-    mvn"org.typelevel::cats-effect:3.5.4",
+    mvn"org.typelevel::cats-effect:3.6.3",
     mvn"com.password4j:password4j:1.8.2",
-    mvn"org.tpolecat::doobie-core:1.0.0-RC6",
+    mvn"org.tpolecat::doobie-core:$DoobieVersion",
     mvn"io.circe::circe-generic:$CirceVersion",
     mvn"org.http4s::http4s-circe:$Http4sVersion",
-    mvn"co.fs2::fs2-core:3.11.0",
-    mvn"co.fs2::fs2-io:3.11.0",
+    mvn"co.fs2::fs2-core:$Fs2Version",
+    mvn"co.fs2::fs2-io:$Fs2Version",
     mvn"com.lihaoyi::scalatags:0.13.1",
     mvn"com.lihaoyi::upickle:4.1.0",
   )
