@@ -1,25 +1,33 @@
 package me.joshuakfarrar.apollo.auth
 
+import cats.Applicative
 import cats.data.Kleisli
 import cats.effect.Sync
-import org.http4s.{Request, Response, Status}
-import org.http4s.headers.Cookie as HCookie
-import org.http4s.server.middleware.CSRF
-import org.typelevel.vault.Key
 import cats.implicits.*
+import org.http4s.headers.{Cookie => HCookie}
+import org.http4s.server.middleware.CSRF
 import org.http4s.server.middleware.CSRF.CSRFCheckFailed
+import org.http4s.{Request, RequestCookie, Response}
+import org.typelevel.vault.Key
 
 object CSRFMiddleware {
-  def validate[F[_] : Sync](
-                             csrf: CSRF[F, F],
-                             tokenKey: Key[String]
-                           )(
-                             app: Kleisli[F, Request[F], Response[F]]
-                           ): Kleisli[F, Request[F], Response[F]] = {
-    def handleSafe(r: Request[F])(implicit F: Sync[F]): F[Response[F]] =
-      r.headers
+  def validate[F[_]: Sync, G[_]: Applicative](
+      csrf: CSRF[F, G],
+      csrfCookieName: String, // this is gross but CSRF.CookieSettings is private
+      tokenKey: Key[String]
+  )(
+      app: Kleisli[F, Request[G], Response[G]]
+  ): Kleisli[F, Request[G], Response[G]] = {
+    def cookieFromHeaders(
+        request: Request[G],
+        cookieName: String
+    ): Option[RequestCookie] =
+      request.headers
         .get[HCookie]
-        .flatMap(_.values.find(_.name == "csrf-token")) match {
+        .flatMap(_.values.find(_.name == cookieName))
+
+    def handleSafe(r: Request[G])(implicit F: Sync[F]): F[Response[G]] =
+      cookieFromHeaders(r, csrfCookieName) match {
         case Some(c) =>
           (for {
             raw <- F.fromEither(csrf.extractRaw(c.content))
@@ -27,8 +35,8 @@ object CSRFMiddleware {
             updatedReq = r.withAttribute(tokenKey, newToken.toString)
             res <- app(updatedReq)
           } yield res.addCookie(csrf.createResponseCookie(newToken)))
-            .recover { case CSRFCheckFailed =>
-              Response[F](Status.Forbidden)
+            .recoverWith { case CSRFCheckFailed =>
+              csrf.onfailureF
             }
         case None =>
           for {
