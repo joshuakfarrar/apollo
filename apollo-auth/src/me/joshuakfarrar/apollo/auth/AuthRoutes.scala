@@ -147,6 +147,10 @@ object AuthRoutes:
         def validateRegistrationForm(form: RegistrationForm): Option[String] =
           if (form.name.isEmpty)
             Some("Name field cannot be empty")
+          else if (form.email.isEmpty)
+            Some("Email field cannot be empty")
+          else if (form.password.isEmpty)
+            Some("Password cannot be empty")
           else if (!form.password.equals(form.confirmPassword))
             Some("Password and confirmation did not match")
           else
