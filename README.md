@@ -1,5 +1,7 @@
 # Apollo
 
+[![Scala](https://img.shields.io/badge/Scala%203-%23de3423.svg?logo=scala&logoColor=white)](https://www.scala-lang.org/)
+
 🚧 This code is under development and is NOT meant for production use! 🚧
 
 An easy-to-use Devise-like authentication solution for Http4s. It will become configurable and more modular, so that you only need to use what you really need.
