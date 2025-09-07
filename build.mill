@@ -2,7 +2,7 @@ package build
 
 import mill.*, scalalib.*, publish.*
 
-val Http4sVersion = "0.23.29"
+val Http4sVersion = "1.0.0-M44"
 val CirceVersion = "0.14.10"
 
 object `apollo-auth` extends ScalaModule with PublishModule {

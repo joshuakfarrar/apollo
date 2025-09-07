@@ -2,16 +2,16 @@ package me.joshuakfarrar.apollo.auth
 
 import cats.Applicative
 import cats.data.Kleisli
-import cats.effect.Sync
+import cats.effect.{Async, Sync}
 import cats.implicits.*
-import org.http4s.headers.{Cookie => HCookie}
+import org.http4s.headers.Cookie as HCookie
 import org.http4s.server.middleware.CSRF
 import org.http4s.server.middleware.CSRF.CSRFCheckFailed
 import org.http4s.{Request, RequestCookie, Response}
 import org.typelevel.vault.Key
 
 object CSRFMiddleware {
-  def validate[F[_]: Sync, G[_]: Applicative](
+  def validate[F[_]: Async, G[_]: Applicative](
       csrf: CSRF[F, G],
       csrfCookieName: String, // this is gross but CSRF.CookieSettings is private
       tokenKey: Key[String]
@@ -26,11 +26,11 @@ object CSRFMiddleware {
         .get[HCookie]
         .flatMap(_.values.find(_.name == cookieName))
 
-    def handleSafe(r: Request[G])(implicit F: Sync[F]): F[Response[G]] =
+    def handleSafe(r: Request[G])(implicit F: Async[F]): F[Response[G]] =
       cookieFromHeaders(r, csrfCookieName) match {
         case Some(c) =>
           (for {
-            raw <- F.fromEither(csrf.extractRaw(c.content))
+            raw <- csrf.extractRaw[F](c.content).flatMap(F.fromEither)
             newToken <- csrf.signToken[F](raw)
             updatedReq = r.withAttribute(tokenKey, newToken.toString)
             res <- app(updatedReq)

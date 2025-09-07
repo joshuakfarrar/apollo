@@ -15,6 +15,6 @@ object ScalatagsInstances:
       mediaType: MediaType
   )(implicit charset: Charset = `UTF-8`): EntityEncoder[F, C] =
     EntityEncoder
-      .stringEncoder[F]
+      .stringEncoder
       .contramap[C](content => content.render)
       .withContentType(`Content-Type`(mediaType, charset))
