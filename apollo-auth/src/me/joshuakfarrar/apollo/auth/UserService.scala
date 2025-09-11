@@ -3,11 +3,8 @@ package me.joshuakfarrar.apollo.auth
 import cats.data.EitherT
 import cats.effect.Sync
 import cats.implicits.*
-import com.password4j.*
 import doobie.*
 import doobie.implicits.*
-
-import java.util.UUID
 
 trait UserService[F[_], U, I] {
   def createUser(
@@ -27,7 +24,7 @@ trait UserService[F[_], U, I] {
 object UserService {
   def impl[F[_], U, I: Put](
       xa: Transactor[F]
-  )(using S: Sync[F], R: Read[U], H: HasId[U, I]): UserService[F, U, I] =
+  )(using S: Sync[F], R: Read[U], H: HasId[U, I], PW: Hashable[F, String]): UserService[F, U, I] =
     new UserService[F, U, I] {
       def insertUser(
           name: String,
@@ -46,11 +43,7 @@ object UserService {
           password: String
       ): EitherT[F, Throwable, U] = {
         for {
-          pw <- EitherT.liftF(
-            S.delay(
-              Password.hash(password).withArgon2().getResult
-            )
-          )
+          pw <- EitherT.liftF(PW.hash(password))
           _ <- insertUser(name, email, pw)
           user <- fetchUser(email)
         } yield user
@@ -70,11 +63,7 @@ object UserService {
           password: String
       ): EitherT[F, Throwable, Unit] =
         for {
-          pw <- EitherT.liftF(
-            S.delay(
-              Password.hash(password).withArgon2().getResult
-            )
-          )
+          pw <- EitherT.liftF(PW.hash(password))
           _ <- EitherT { sql"update [webapp].[dbo].[users] set password = ${pw} where id = ${userId}".update.run
             .transact(xa)
             .attempt }

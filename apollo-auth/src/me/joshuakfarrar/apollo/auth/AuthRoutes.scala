@@ -4,7 +4,6 @@ import cats.data.EitherT
 import cats.effect.Async
 import cats.implicits.*
 import com.microsoft.sqlserver.jdbc.SQLServerException
-import com.password4j.Password
 import me.joshuakfarrar.apollo.auth.CookieHelpers.withFlashCookie
 import me.joshuakfarrar.apollo.auth.DefaultAuthForm.Flash
 import me.joshuakfarrar.apollo.auth.ScalatagsInstances.*
@@ -24,7 +23,7 @@ object AuthRoutes:
       MailService: MailService[F, E, Unit],
       SessionService: SessionService[F, U, I],
       ResetService: ResetService[F, U, I]
-  ): HttpRoutes[F] =
+  )(implicit PW: Hashable[F, String]): HttpRoutes[F] =
     val dsl = new Http4sDsl[F] {}
     import dsl.*
 
@@ -210,11 +209,10 @@ object AuthRoutes:
         def authenticateUser(email: String, password: String): EitherT[F, Throwable, (U, Boolean)] =
           for {
             user <- UserService.fetchUser(email)
+            passwordsMatch <- EitherT(PW.verify(password, implicitly[HasPassword[U]].password(user)).map(Right(_)))
           } yield (
             user,
-            Password
-              .check(password, implicitly[HasPassword[U]].password(user))
-              .withArgon2()
+            passwordsMatch
           )
 
         request

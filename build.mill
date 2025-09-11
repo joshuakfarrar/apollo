@@ -32,7 +32,6 @@ object `apollo-auth` extends ScalaModule with PublishModule {
     mvn"org.http4s::http4s-dsl:$Http4sVersion",
     mvn"org.typelevel::cats-core:2.13.0",
     mvn"org.typelevel::cats-effect:3.6.3",
-    mvn"com.password4j:password4j:1.8.2",
     mvn"org.tpolecat::doobie-core:$DoobieVersion",
     mvn"io.circe::circe-generic:$CirceVersion",
     mvn"org.http4s::http4s-circe:$Http4sVersion",

@@ -6,7 +6,7 @@ import cats.effect.{Async, Sync}
 import cats.implicits.*
 import org.http4s.headers.Cookie as HCookie
 import org.http4s.server.middleware.CSRF
-import org.http4s.server.middleware.CSRF.CSRFCheckFailed
+import org.http4s.server.middleware.CSRF.{CSRFCheckFailed, unlift}
 import org.http4s.{Request, RequestCookie, Response}
 import org.typelevel.vault.Key
 
@@ -32,7 +32,7 @@ object CSRFMiddleware {
           (for {
             raw <- csrf.extractRaw[F](c.content).flatMap(F.fromEither)
             newToken <- csrf.signToken[F](raw)
-            updatedReq = r.withAttribute(tokenKey, newToken.toString)
+            updatedReq = r.withAttribute(tokenKey, unlift(newToken))
             res <- app(updatedReq)
           } yield res.addCookie(csrf.createResponseCookie(newToken)))
             .recoverWith { case CSRFCheckFailed =>
@@ -41,7 +41,7 @@ object CSRFMiddleware {
         case None =>
           for {
             token <- csrf.generateToken[F]
-            updatedReq = r.withAttribute(tokenKey, token.toString)
+            updatedReq = r.withAttribute(tokenKey, unlift(token))
             resp <- app(updatedReq)
           } yield resp.addCookie(csrf.createResponseCookie(token))
       }
