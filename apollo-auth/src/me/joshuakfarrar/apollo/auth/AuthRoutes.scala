@@ -5,14 +5,13 @@ import cats.effect.Async
 import cats.implicits.*
 import com.microsoft.sqlserver.jdbc.SQLServerException
 import me.joshuakfarrar.apollo.auth.CookieHelpers.withFlashCookie
-import me.joshuakfarrar.apollo.auth.DefaultAuthForm.Flash
-import me.joshuakfarrar.apollo.auth.ScalatagsInstances.*
 import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.Location
 import org.http4s.implicits.uri
 import org.http4s.server.middleware.CSRF
+import org.http4s.twirl.*
 import org.http4s.{EntityEncoder, HttpRoutes, Response, ResponseCookie, SameSite, UrlForm}
-import org.typelevel.vault.{Key, LookupKey}
+import org.typelevel.vault.Key
 
 object AuthRoutes:
   def routes[F[_]: Async, U: HasPassword: HasEmail, E, I](
@@ -27,12 +26,13 @@ object AuthRoutes:
     val dsl = new Http4sDsl[F] {}
     import dsl.*
 
+    case class Flash(cssClass: String, message: String)
+
     def renderLogin(
                      csrfToken: String,
-                     focus: DefaultAuthForm.Focus,
+                     focus: String,
                      flash: Option[Flash] = None
-    ) =
-      DefaultLayout.render(DefaultAuthForm.page(csrfToken, focus, flash))
+    ) = Ok(html.authForm(csrfToken, focus, flash.map(f => (f.cssClass, f.message))))
 
     def redirectWithFlashMessages(
         flashMessages: Map[String, String]
@@ -69,19 +69,18 @@ object AuthRoutes:
       val flashMessages: Map[String, String] = Map(
         "message" -> message,
         "cssClass" -> "alert-danger",
-
       )
       redirectWithFlashMessages(flashMessages)(Location(uri"/reset"))
     }
 
     def loginRedirectWithSuccess: String => F[Response[F]] =
-      redirectWithFlash("login")("alert-success")(Location(uri"/"))
+      redirectWithFlash("login")("alert-success")(Location(uri"/login"))
 
     def loginRedirectWithError: String => F[Response[F]] =
-      redirectWithFlash("login")("alert-danger")(Location(uri"/")) // lol, curry
+      redirectWithFlash("login")("alert-danger")(Location(uri"/login")) // lol, curry
 
     def registrationRedirectWithError: String => F[Response[F]] =
-      redirectWithFlash("register")("alert-danger")(Location(uri"/"))
+      redirectWithFlash("register")("alert-danger")(Location(uri"/login"))
 
     def createUser(name: String, email: String, password: String) =
       UserService.createUser(name, email, password).value.flatMap {
@@ -123,23 +122,22 @@ object AuthRoutes:
     }
 
     HttpRoutes.of[F]:
-      case request @ GET -> Root => {
+      case request @ GET -> Root / "login" =>
         request.attributes.lookup(csrfTokenKey) match {
           case Some(token) => withFlashCookie(request) { cookie =>
             val location = cookie.flatMap(_.get("location"))
             val focus = location match {
-              case Some("register") => DefaultAuthForm.Focus.Register
-              case _ => DefaultAuthForm.Focus.Login
+              case Some("register") => "register"
+              case _ => "login"
             }
             val cssClass = cookie.flatMap(_.get("cssClass"))
             val flash = for {
               message <- cookie.flatMap(_.get("message"))
             } yield Flash(cssClass = cssClass.getOrElse("alert-danger"), message = message)
-            Ok(renderLogin(token, focus, flash))
+            renderLogin(token, focus, flash)
           }
           case None => Forbidden()
         }
-      }
       case request @ POST -> Root / "register" =>
         case class RegistrationForm(name: String, email: String, password: String, confirmPassword: String)
 
@@ -238,8 +236,8 @@ object AuthRoutes:
       case request @ GET -> Root / "reset" =>
         request.attributes.lookup(csrfTokenKey) match {
           case Some(token) => withFlashCookie(request) {
-            case None => Ok(DefaultLayout.render(DefaultResetRequestForm.page(token, None)))
-            case Some(cookie) => Ok(DefaultLayout.render(DefaultResetRequestForm.page(token, Some(DefaultResetRequestForm.Flash(cssClass = "alert-danger", message = cookie.getOrElse("message", ""))))))
+            case None => Ok(html.resetRequestForm(token, None))
+            case Some(cookie) => Ok(html.resetRequestForm(token, Some(("alert-danger", cookie.getOrElse("message", "")))))
           }
           case None => Forbidden()
         }
@@ -271,12 +269,7 @@ object AuthRoutes:
               .getReset(code)
               .foldF(error => resetRedirectWithError(s"Invalid or expired reset code ${error.getMessage}"),
                 reset =>
-                  Ok(
-                    DefaultLayout.render(
-                      DefaultChangePasswordForm
-                        .page(token.toString, None)
-                    )
-                  )
+                  Ok(html.changePasswordForm(token.toString, None))
               )
           case None => Forbidden()
         }
@@ -306,22 +299,11 @@ object AuthRoutes:
                 loginRedirectWithSuccess("Password successfully reset. Please log in with your new password")
               }
             case Left(error) =>
-              Ok(
-                DefaultLayout.render(
-                  DefaultChangePasswordForm.page(
-                    "test",
-                    Some(s"Failed to update password: ${error.getMessage}")
-                  )
-                )
-              )
+              Ok(html.changePasswordForm("test", Some(s"Failed to update password: ${error.getMessage}")))
           }
 
         def renderPasswordForm(error: Option[String] = None): F[Response[F]] =
-          Ok(
-            DefaultLayout.render(
-              DefaultChangePasswordForm.page("test", error)
-            )
-          )
+          Ok(html.changePasswordForm("test", error))
 
         ResetService.getReset(code).value.flatMap {
           case Left(_) =>
@@ -340,4 +322,16 @@ object AuthRoutes:
               }
             }
           }
+      }
+      case request @ POST -> Root / "logout" => {
+        request.cookies.find(_.name == "session_token") match {
+          case Some(cookie) =>
+            SessionService.deleteSession(cookie.content).value.flatMap { _ =>
+              SeeOther(Location(uri"/")).map(
+                _.removeCookie("session_token")
+              )
+            }
+          case None =>
+            SeeOther(Location(uri"/"))
+        }
       }

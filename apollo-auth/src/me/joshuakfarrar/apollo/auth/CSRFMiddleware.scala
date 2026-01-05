@@ -2,7 +2,7 @@ package me.joshuakfarrar.apollo.auth
 
 import cats.Applicative
 import cats.data.Kleisli
-import cats.effect.{Async, Sync}
+import cats.effect.Async
 import cats.implicits.*
 import org.http4s.headers.Cookie as HCookie
 import org.http4s.server.middleware.CSRF

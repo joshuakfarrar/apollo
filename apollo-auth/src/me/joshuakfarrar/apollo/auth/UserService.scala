@@ -15,6 +15,8 @@ trait UserService[F[_], U, I] {
 
   def fetchUser(email: String): EitherT[F, Throwable, U]
 
+  def findBySessionToken(sessionToken: String): EitherT[F, Throwable, U]
+
   def updatePassword(
       userId: I,
       password: String
@@ -52,6 +54,21 @@ object UserService {
       def fetchUser(email: String): EitherT[F, Throwable, U] =
         EitherT {
           sql"select id, name, email, password from [webapp].[dbo].[users] where email = ${email}"
+            .query[U]
+            .unique
+            .transact(xa)
+            .attempt
+        }
+
+      def findBySessionToken(sessionToken: String): EitherT[F, Throwable, U] =
+        EitherT {
+          sql"""
+                  select u.id, u.name, u.email, u.password
+                  from [webapp].[dbo].[users] u
+                  inner join [webapp].[dbo].[sessions] s on s.user_id = u.id
+                  where s.token = $sessionToken
+                    and s.expires_at > SYSDATETIMEOFFSET()
+                """
             .query[U]
             .unique
             .transact(xa)
