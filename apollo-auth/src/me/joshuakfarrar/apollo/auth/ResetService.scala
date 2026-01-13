@@ -5,10 +5,10 @@ import cats.effect.Concurrent
 import cats.effect.std.Random
 import cats.implicits.*
 import doobie.*
-import doobie.implicits._
-import doobie.implicits.javatimedrivernative._
+import doobie.implicits.*
+import doobie.implicits.javatimedrivernative.*
 import me.joshuakfarrar.apollo.auth.util.generateAlphaNumericString
-import java.util.UUID
+
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 case class Reset[Id](userId: Id, code: String, createdAt: Instant)
@@ -43,14 +43,17 @@ object ResetService {
       ): EitherT[F, Throwable, String] = for {
         code <- EitherT.liftF(generateAlphaNumericString[F](32))
         res <-
-          sql"insert into [webapp].[dbo].[resets] (user_id, code, created_at) values (${H.id(user).toString}, ${code}, CURRENT_TIMESTAMP)".update.run
+          sql"""
+            INSERT INTO resets (user_id, code)
+            VALUES (${H.id(user).toString}::uuid, $code)
+          """.update.run
             .transact(xa)
             .attemptT
       } yield code
 
       override def getReset(code: String): EitherT[F, Throwable, Reset[I]] =
         EitherT {
-          sql"select user_id, code, created_at from [webapp].[dbo].[resets] where code = ${code}"
+          sql"SELECT user_id, code, created_at FROM resets WHERE code = $code"
             .query[Reset[I]]
             .unique
             .transact(xa)
@@ -58,10 +61,10 @@ object ResetService {
         }
 
       override def invalidateReset(code: String) =
-        sql"delete from [webapp].[dbo].[resets] where code = ${code}".update.run
+        sql"DELETE FROM resets WHERE code = $code".update.run
           .transact(xa)
           .attemptT
           .swap
-          .toOption // eats the Int, we only care about errors
+          .toOption
     }
 }

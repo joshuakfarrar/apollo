@@ -26,7 +26,12 @@ trait UserService[F[_], U, I] {
 object UserService {
   def impl[F[_], U, I: Put](
       xa: Transactor[F]
-  )(using S: Sync[F], R: Read[U], H: HasId[U, I], PW: Hashable[F, String]): UserService[F, U, I] =
+  )(using
+      S: Sync[F],
+      R: Read[U],
+      H: HasId[U, I],
+      PW: Hashable[F, String]
+  ): UserService[F, U, I] =
     new UserService[F, U, I] {
       def insertUser(
           name: String,
@@ -34,7 +39,7 @@ object UserService {
           password: String
       ): EitherT[F, Throwable, Int] =
         EitherT {
-          sql"insert into [webapp].[dbo].[users] (name, email, password, created_at) values ($name, $email, $password, CURRENT_TIMESTAMP)".update.run
+          sql"INSERT INTO users (name, email, password) VALUES ($name, $email, $password)".update.run
             .transact(xa)
             .attempt
         }
@@ -53,7 +58,7 @@ object UserService {
 
       def fetchUser(email: String): EitherT[F, Throwable, U] =
         EitherT {
-          sql"select id, name, email, password from [webapp].[dbo].[users] where email = ${email}"
+          sql"SELECT id, name, email, password FROM users WHERE email = $email"
             .query[U]
             .unique
             .transact(xa)
@@ -63,12 +68,12 @@ object UserService {
       def findBySessionToken(sessionToken: String): EitherT[F, Throwable, U] =
         EitherT {
           sql"""
-                  select u.id, u.name, u.email, u.password
-                  from [webapp].[dbo].[users] u
-                  inner join [webapp].[dbo].[sessions] s on s.user_id = u.id
-                  where s.token = $sessionToken
-                    and s.expires_at > SYSDATETIMEOFFSET()
-                """
+            SELECT u.id, u.name, u.email, u.password
+            FROM users u
+            INNER JOIN sessions s ON s.user_id = u.id
+            WHERE s.token = $sessionToken
+              AND s.expires_at > NOW()
+          """
             .query[U]
             .unique
             .transact(xa)
@@ -81,9 +86,11 @@ object UserService {
       ): EitherT[F, Throwable, Unit] =
         for {
           pw <- EitherT.liftF(PW.hash(password))
-          _ <- EitherT { sql"update [webapp].[dbo].[users] set password = ${pw} where id = ${userId}".update.run
-            .transact(xa)
-            .attempt }
+          _ <- EitherT {
+            sql"UPDATE users SET password = $pw WHERE id = $userId".update.run
+              .transact(xa)
+              .attempt
+          }
         } yield ()
     }
 }

@@ -30,19 +30,25 @@ object ConfirmationService {
       ): EitherT[F, Throwable, String] = for {
         code <- EitherT.liftF(generateAlphaNumericString[F](32))
         res <-
-          sql"insert into [webapp].[dbo].[confirmations] (user_id, code, created_at) values (${H.id(user).toString}, ${code}, CURRENT_TIMESTAMP)".update.run
+          sql"""
+            INSERT INTO confirmations (user_id, code) 
+            VALUES (${H.id(user).toString}::uuid, $code)
+          """.update.run
             .transact(xa)
             .attemptT
       } yield code
 
       override def confirmByCode(code: String) =
         (
-          sql"update [webapp].[dbo].[users] set confirmed_at = CURRENT_TIMESTAMP where id = (select user_id from [webapp].[dbo].[confirmations] where code = ${code})".update.run,
-          sql"delete from [webapp].[dbo].[confirmations] where code = ${code}".update.run
+          sql"""
+            UPDATE users SET confirmed_at = NOW()
+            WHERE id = (SELECT user_id FROM confirmations WHERE code = $code)
+          """.update.run,
+          sql"DELETE FROM confirmations WHERE code = $code".update.run
         ).mapN(_ + _)
           .transact(xa)
           .attemptT
           .swap
-          .toOption // eats the Int, we only care about errors
+          .toOption
     }
 }
