@@ -17,15 +17,15 @@ import play.twirl.api.Html
 case class Flash(cssClass: String, message: String)
 
 case class ApolloConfig[F[_]](
-                               csrfTokenKey: Key[String],
-                               csrf: CSRF[F, F]
-                             )
+    csrfTokenKey: Key[String],
+    csrf: CSRF[F, F]
+)
 
 case class ApolloTemplates(
-                            auth: (String, String, Option[Flash]) => Html,
-                            forgotPassword: (String, Option[Flash]) => Html,
-                            resetPassword: (String, Option[String]) => Html
-                          )
+    auth: (String, String, Option[Flash]) => Html,
+    forgotPassword: (String, Option[Flash]) => Html,
+    resetPassword: (String, Option[String]) => Html
+)
 
 object ApolloTemplates {
   def defaults: ApolloTemplates = ApolloTemplates(
@@ -38,43 +38,43 @@ object ApolloTemplates {
 }
 
 case class ApolloServices[F[_], U, I, E](
-                                          user: UserService[F, U, I],
-                                          confirmation: ConfirmationService[F, U, I],
-                                          mail: MailService[F, E, Unit],
-                                          session: SessionService[F, U, I],
-                                          reset: ResetService[F, U, I]
-                                        )
+    user: UserService[F, U, I],
+    confirmation: ConfirmationService[F, U, I],
+    mail: MailService[F, E, Unit],
+    session: SessionService[F, U, I],
+    reset: ResetService[F, U, I]
+)
 
 case class Apollo[F[_], U, I, E](
-                                  config: ApolloConfig[F],
-                                  templates: ApolloTemplates,
-                                  services: ApolloServices[F, U, I, E]
-                                )
+    config: ApolloConfig[F],
+    templates: ApolloTemplates,
+    services: ApolloServices[F, U, I, E]
+)
 
 object Apollo {
   def apply[F[_], U, I, E](
-                            config: ApolloConfig[F],
-                            services: ApolloServices[F, U, I, E]
-                          ): Apollo[F, U, I, E] = Apollo(config, ApolloTemplates.defaults, services)
+      config: ApolloConfig[F],
+      services: ApolloServices[F, U, I, E]
+  ): Apollo[F, U, I, E] = Apollo(config, ApolloTemplates.defaults, services)
 }
 
 object AuthRoutes:
   def routes[F[_]: Async, U: HasPassword: HasEmail, E, I](
-                                                           apollo: Apollo[F, U, I, E]
-                                                         )(implicit PW: Hashable[F, String]): HttpRoutes[F] =
+      apollo: Apollo[F, U, I, E]
+  )(implicit PW: Hashable[F, String]): HttpRoutes[F] =
     val dsl = new Http4sDsl[F] {}
     import dsl.*
 
     def renderLogin(
-                     csrfToken: String,
-                     focus: String,
-                     flash: Option[Flash] = None
-                   ) =
+        csrfToken: String,
+        focus: String,
+        flash: Option[Flash] = None
+    ) =
       Ok(apollo.templates.auth(csrfToken, focus, flash))
 
     def redirectWithFlashMessages(
-                                   flashMessages: Map[String, String]
-                                 )(location: Location): F[Response[F]] =
+        flashMessages: Map[String, String]
+    )(location: Location): F[Response[F]] =
       FlashOps
         .serialize(flashMessages)
         .flatMap(
@@ -95,8 +95,8 @@ object AuthRoutes:
         )
 
     def redirectWithFlash(
-                           focus: String
-                         )(cssClass: String)(location: Location)(message: String) = {
+        focus: String
+    )(cssClass: String)(location: Location)(message: String) = {
       val flashMessages: Map[String, String] = Map(
         "message" -> message,
         "cssClass" -> cssClass,
@@ -125,8 +125,8 @@ object AuthRoutes:
       redirectWithFlash("register")("alert-danger")(Location(uri"/login"))
 
     def resetCodeRedirectWithError(
-                                    code: String
-                                  )(message: String): F[Response[F]] = {
+        code: String
+    )(message: String): F[Response[F]] = {
       val flashMessages: Map[String, String] = Map(
         "message" -> message,
         "cssClass" -> "alert-danger"
@@ -201,10 +201,10 @@ object AuthRoutes:
         }
       case request @ POST -> Root / "register" =>
         case class RegistrationForm(
-          name: String,
-          email: String,
-          password: String,
-          confirmPassword: String
+            name: String,
+            email: String,
+            password: String,
+            confirmPassword: String
         )
 
         def validateRegistrationForm(form: RegistrationForm): Option[String] =
@@ -273,9 +273,9 @@ object AuthRoutes:
           } yield (email, password)
 
         def authenticateUser(
-                              email: String,
-                              password: String
-                            ): EitherT[F, Throwable, (U, Boolean)] =
+            email: String,
+            password: String
+        ): EitherT[F, Throwable, (U, Boolean)] =
           for {
             user <- apollo.services.user.fetchUser(email)
             passwordsMatch <- EitherT(
@@ -377,9 +377,9 @@ object AuthRoutes:
           } yield (password, confirmPassword)
 
         def validatePasswords(
-                               password: String,
-                               confirmPassword: String
-                             ): Option[String] =
+            password: String,
+            confirmPassword: String
+        ): Option[String] =
           if (password.isEmpty)
             Some("Password cannot be empty")
           else if (!password.equals(confirmPassword))
@@ -390,9 +390,9 @@ object AuthRoutes:
             None
 
         def processPasswordReset(
-                                  resetToken: Reset[I],
-                                  newPassword: String
-                                ): F[Response[F]] =
+            resetToken: Reset[I],
+            newPassword: String
+        ): F[Response[F]] =
           apollo.services.user
             .updatePassword(resetToken.userId, newPassword)
             .value
@@ -435,17 +435,17 @@ object AuthRoutes:
         csrfCheck.getOrElse(Forbidden())
       }
       case request @ POST -> Root / "logout" => {
-      request.cookies.find(_.name == "session_token") match {
-        case Some(cookie) =>
-          apollo.services.session
-            .deleteSession(cookie.content)
-            .value
-            .flatMap { _ =>
-              SeeOther(Location(uri"/")).map(
-                _.removeCookie("session_token")
-              )
-            }
-        case None =>
-          SeeOther(Location(uri"/"))
+        request.cookies.find(_.name == "session_token") match {
+          case Some(cookie) =>
+            apollo.services.session
+              .deleteSession(cookie.content)
+              .value
+              .flatMap { _ =>
+                SeeOther(Location(uri"/")).map(
+                  _.removeCookie("session_token")
+                )
+              }
+          case None =>
+            SeeOther(Location(uri"/"))
+        }
       }
-  }
