@@ -71,7 +71,7 @@ object UserServiceDoobie {
         for {
           pw <- EitherT.liftF(PW.hash(password))
           _ <- EitherT {
-            sql"UPDATE users SET password = $pw WHERE id = $userId".update.run
+            sql"UPDATE users SET password = $pw WHERE id = ${userId.toString}::uuid".update.run
               .transact(xa)
               .attempt
           }
