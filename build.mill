@@ -1,7 +1,10 @@
 //| mvnDeps: ["com.lihaoyi::mill-contrib-twirllib:1.0.4"]
 package build
 
-import mill.*, scalalib.*, publish.*, mill.twirllib.*
+import mill._
+import mill.scalalib._
+import mill.scalalib.publish._
+import mill.contrib.twirllib._
 
 val Http4sVersion = "1.0.0-M44"
 val CirceVersion = "0.14.14"
@@ -35,46 +38,46 @@ trait ApolloPublishModule extends PublishModule {
 
 object `apollo-core` extends ScalaModule with ApolloPublishModule {
   def scalaVersion = scalaV
-  def artifactId = "apollo-core"
+  def artifactName = "apollo-core"
 
-  def mvnDeps = Seq(
-    mvn"org.typelevel::cats-core:2.13.0",
-    mvn"org.typelevel::cats-effect:3.6.3"
+  def ivyDeps = Agg(
+    ivy"org.typelevel::cats-core:2.13.0",
+    ivy"org.typelevel::cats-effect:3.6.3"
   )
 }
 
 object `apollo-doobie` extends ScalaModule with ApolloPublishModule {
   def scalaVersion = scalaV
-  def artifactId = "apollo-doobie"
+  def artifactName = "apollo-doobie"
 
   def moduleDeps = Seq(`apollo-core`)
 
-  def mvnDeps = Seq(
-    mvn"org.tpolecat::doobie-core:$DoobieVersion"
+  def ivyDeps = Agg(
+    ivy"org.tpolecat::doobie-core:$DoobieVersion"
   )
 }
 
 object `apollo-http4s` extends ScalaModule with TwirlModule with ApolloPublishModule {
   def scalaVersion = scalaV
-  def artifactId = "apollo-http4s"
+  def artifactName = "apollo-http4s"
   def twirlVersion = "2.0.9"
 
-  override def generatedSources = Task {
+  override def generatedSources = T {
     Seq(compileTwirl().classes)
   }
 
   def moduleDeps = Seq(`apollo-core`)
 
-  def mvnDeps = Seq(
-    mvn"org.http4s::http4s-ember-server:$Http4sVersion",
-    mvn"org.http4s::http4s-ember-client:$Http4sVersion",
-    mvn"org.http4s::http4s-dsl:$Http4sVersion",
-    mvn"org.http4s::http4s-crypto:0.2.5-RC1",
-    mvn"io.circe::circe-generic:$CirceVersion",
-    mvn"org.http4s::http4s-circe:$Http4sVersion",
-    mvn"org.http4s::http4s-twirl:1.0.0-M38",
-    mvn"co.fs2::fs2-core:$Fs2Version",
-    mvn"co.fs2::fs2-io:$Fs2Version",
-    mvn"com.lihaoyi::upickle:4.1.0"
+  def ivyDeps = Agg(
+    ivy"org.http4s::http4s-ember-server:$Http4sVersion",
+    ivy"org.http4s::http4s-ember-client:$Http4sVersion",
+    ivy"org.http4s::http4s-dsl:$Http4sVersion",
+    ivy"org.http4s::http4s-crypto:0.2.5-RC1",
+    ivy"io.circe::circe-generic:$CirceVersion",
+    ivy"org.http4s::http4s-circe:$Http4sVersion",
+    ivy"org.http4s::http4s-twirl:1.0.0-M38",
+    ivy"co.fs2::fs2-core:$Fs2Version",
+    ivy"co.fs2::fs2-io:$Fs2Version",
+    ivy"com.lihaoyi::upickle:4.1.0"
   )
 }
