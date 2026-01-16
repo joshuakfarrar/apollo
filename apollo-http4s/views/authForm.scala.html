@@ -1,0 +1,113 @@
+@(csrfToken: String, focus: String = "login", flash: Option[(String, String)] = None)
+
+@defining(focus == "login") { isLogin =>
+@defining(focus == "register") { isRegister =>
+
+@layout {
+<h2 id="title">Sign in</h2>
+<p>Welcome to Apollo!</p>
+
+<div style="max-width: 26rem">
+    @flash.map { case (cssClass, message) =>
+    <div class="alert @cssClass" role="alert">@message.</div>
+    }
+
+    <ul class="nav nav-pills nav-justified mb-3">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @if(isLogin){ active}"
+                    type="button"
+                    role="tab"
+                    data-bs-toggle="pill"
+                    data-bs-target="#pills-login"
+                    aria-controls="pills-login"
+                    aria-selected="true">
+                Login
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @if(isRegister){ active}"
+                    type="button"
+                    role="tab"
+                    data-bs-toggle="pill"
+                    data-bs-target="#pills-register"
+                    aria-controls="pills-register"
+                    aria-selected="false">
+                Register
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Login Tab -->
+        <div class="tab-pane fade @if(isLogin){ show active}" id="pills-login" role="tabpanel">
+            <form action="/login" method="POST">
+                <input type="hidden" name="_csrf" value="@csrfToken">
+
+                <div class="form-outline mb-4">
+                    <input class="form-control" type="email" name="email"
+                           id="loginName" placeholder="Email">
+                </div>
+
+                <div class="form-outline mb-4">
+                    <input class="form-control" type="password" name="password"
+                           id="loginPassword" placeholder="Password">
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6 d-flex justify-content-center">
+                        <div class="form-check mb-3 mb-md-0">
+                            <input class="form-check-input" type="checkbox"
+                                   value="" id="loginCheck" checked>
+                            <label class="form-label" for="loginCheck">Remember me</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex justify-content-center">
+                        <a href="/reset">Forgot password?</a>
+                    </div>
+                </div>
+
+                <div class="d-grid mx-auto">
+                    <button class="btn btn-primary btn-block mb-4" type="submit">
+                        Sign in
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Register Tab -->
+        <div class="tab-pane fade @if(isRegister){ show active}" id="pills-register" role="tabpanel">
+            <form action="/register" method="POST">
+                <input type="hidden" name="_csrf" value="@csrfToken">
+
+                <div class="form-outline mb-4">
+                    <input class="form-control" type="text" name="name"
+                           id="registerName" placeholder="Full name">
+                </div>
+
+                <div class="form-outline mb-4">
+                    <input class="form-control" type="email" name="email"
+                           id="registerEmail" placeholder="E-mail address">
+                </div>
+
+                <div class="form-outline mb-4">
+                    <input class="form-control" type="password" name="password"
+                           id="registerPassword" placeholder="Password">
+                </div>
+
+                <div class="form-outline mb-4">
+                    <input class="form-control" type="password" name="confirmPassword"
+                           id="registerConfirmPassword" placeholder="Confirm password">
+                </div>
+
+                <div class="d-grid mx-auto">
+                    <button class="btn btn-primary btn-block mb-4" type="submit">
+                        Sign up
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+}
+
+}}

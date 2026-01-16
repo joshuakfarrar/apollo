@@ -4,48 +4,77 @@ package build
 import mill.*, scalalib.*, publish.*, mill.twirllib.*
 
 val Http4sVersion = "1.0.0-M44"
-//val Http4sVersion = "1.0-ecde17e-20250907T231823Z-SNAPSHOT"
 val CirceVersion = "0.14.14"
 val DoobieVersion = "1.0.0-RC10"
 val Fs2Version = "3.12.2"
 
-object `apollo-auth` extends ScalaModule with TwirlModule with PublishModule {
-  def scalaVersion = "3.3.6"
-  def artifactId = "apollo-auth"
-  def publishVersion = "0.1.0-SNAPSHOT"
-  def twirlVersion = "2.0.9"
+val scalaV = "3.3.6"
+val publishV = "0.1.0-SNAPSHOT"
 
-  override def generatedSources = Task {
-    Seq(compileTwirl().classes)
-  }
+trait ApolloPublishModule extends PublishModule {
+  def publishVersion = publishV
 
   def pomSettings = PomSettings(
     organization = "me.joshuakfarrar",
     description = "An authentication solution for Http4s",
     url = "https://github.com/joshuakfarrar/apollo",
     licenses = Seq(License.MIT),
-    versionControl = VersionControl(browsableRepository = Some("https://github.com/joshuakfarrar/apollo")),
+    versionControl = VersionControl(
+      url = Some("https://github.com/joshuakfarrar/apollo"),
+      browsableRepository = Some("https://github.com/joshuakfarrar/apollo"),
+      connection = Some("scm:git:git://github.com/joshuakfarrar/apollo.git"),
+      developerConnection = Some("scm:git:ssh://github.com:joshuakfarrar/apollo.git")
+    ),
     developers = Seq(Developer(
       id = "joshuakfarrar",
       name = "Joshua K. Farrar",
       url = "https://github.com/joshuakfarrar"
     ))
   )
+}
+
+object `apollo-core` extends ScalaModule with ApolloPublishModule {
+  def scalaVersion = scalaV
+  def artifactId = "apollo-core"
 
   def mvnDeps = Seq(
-    mvn"com.microsoft.sqlserver:mssql-jdbc:13.2.0.jre11",
+    mvn"org.typelevel::cats-core:2.13.0",
+    mvn"org.typelevel::cats-effect:3.6.3"
+  )
+}
+
+object `apollo-doobie` extends ScalaModule with ApolloPublishModule {
+  def scalaVersion = scalaV
+  def artifactId = "apollo-doobie"
+
+  def moduleDeps = Seq(`apollo-core`)
+
+  def mvnDeps = Seq(
+    mvn"org.tpolecat::doobie-core:$DoobieVersion"
+  )
+}
+
+object `apollo-http4s` extends ScalaModule with TwirlModule with ApolloPublishModule {
+  def scalaVersion = scalaV
+  def artifactId = "apollo-http4s"
+  def twirlVersion = "2.0.9"
+
+  override def generatedSources = Task {
+    Seq(compileTwirl().classes)
+  }
+
+  def moduleDeps = Seq(`apollo-core`)
+
+  def mvnDeps = Seq(
     mvn"org.http4s::http4s-ember-server:$Http4sVersion",
     mvn"org.http4s::http4s-ember-client:$Http4sVersion",
     mvn"org.http4s::http4s-dsl:$Http4sVersion",
     mvn"org.http4s::http4s-crypto:0.2.5-RC1",
-    mvn"org.typelevel::cats-core:2.13.0",
-    mvn"org.typelevel::cats-effect:3.6.3",
-    mvn"org.tpolecat::doobie-core:$DoobieVersion",
     mvn"io.circe::circe-generic:$CirceVersion",
     mvn"org.http4s::http4s-circe:$Http4sVersion",
     mvn"org.http4s::http4s-twirl:1.0.0-M38",
     mvn"co.fs2::fs2-core:$Fs2Version",
     mvn"co.fs2::fs2-io:$Fs2Version",
-    mvn"com.lihaoyi::upickle:4.1.0",
+    mvn"com.lihaoyi::upickle:4.1.0"
   )
 }

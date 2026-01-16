@@ -14,6 +14,32 @@ It has a few features:
 
 Long-term, we'd like to also support Omniauth and all functionality of the standard Devise module
 
+## Modules
+
+Apollo is split into three modules for flexibility:
+
+| Module | Description | Dependencies |
+|--------|-------------|--------------|
+| `apollo-core` | Type classes and service traits | cats, cats-effect |
+| `apollo-doobie` | Doobie-based database implementations | apollo-core, doobie |
+| `apollo-http4s` | Http4s routes and middleware | apollo-core, http4s, twirl |
+
+### Usage
+
+```scala
+// Just the core abstractions
+mvnDeps = Seq(mvn"me.joshuakfarrar::apollo-core:0.1.0")
+
+// With Doobie database layer
+mvnDeps = Seq(mvn"me.joshuakfarrar::apollo-doobie:0.1.0")
+
+// Full stack: Http4s routes + templates
+mvnDeps = Seq(
+  mvn"me.joshuakfarrar::apollo-http4s:0.1.0",
+  mvn"me.joshuakfarrar::apollo-doobie:0.1.0"
+)
+```
+
 ## Getting Started
 
 First, pull down Apollo and add it to your local ivy cache:
@@ -21,25 +47,25 @@ First, pull down Apollo and add it to your local ivy cache:
 ```shell
 $ git clone https://github.com/joshuakfarrar/apollo
 $ cd apollo
-$ .\mill.bat --no-server apollo-auth.publishLocal
+$ mill __.publishLocal
 ```
 
 Then, use our fancy new [Giter8](https://www.foundweekends.org/giter8) template!
 
 ```shell
-$ .\mill.bat --interactive init joshuakfarrar/apollo.g8
+$ mill --interactive init joshuakfarrar/apollo.g8
 $ cd webapp
-$ .\db\initalize-database.bat # ⚠️ warning: this will destroy and reinitialize your database!
+$ # Initialize your PostgreSQL database using the scripts in apollo-doobie/src/db/pg/
 ```
 
-Configure the application in `.\webapp\resources\application.conf`, then, run the server:
+Configure the application in `./webapp/resources/application.conf`, then, run the server:
 
 ```shell
-webapp $ .\mill.bat --no-server webapp.run
+webapp $ mill webapp.run
 ```
 
 Browse to [http://localhost:8080](http://localhost:8080) *et voilà!*
 
-We promise we'll get this on Maven Central and add generators to automate some of the setup soon.
+We promise we'll get this on Maven Central soon.
 
 🎉
