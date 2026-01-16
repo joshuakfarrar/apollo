@@ -178,6 +178,13 @@ object AuthRoutes:
       )
     }
 
+    case class RegistrationForm(
+        name: String,
+        email: String,
+        password: String,
+        confirmPassword: String
+    )
+
     HttpRoutes.of[F]:
       case request @ GET -> Root / "login" =>
         request.attributes.lookup(apollo.config.csrfTokenKey) match {
@@ -200,13 +207,6 @@ object AuthRoutes:
           case None => Forbidden()
         }
       case request @ POST -> Root / "register" =>
-        case class RegistrationForm(
-            name: String,
-            email: String,
-            password: String,
-            confirmPassword: String
-        )
-
         def validateRegistrationForm(form: RegistrationForm): Option[String] =
           if (form.name.isEmpty)
             Some("Name field cannot be empty")
@@ -343,7 +343,6 @@ object AuthRoutes:
               } yield code
 
               result.value.flatMap { _ =>
-                // todo: replace with alert-info
                 resetRedirectWithError(
                   "A password reset e-mail has been sent to the provided user's email address, if they exist"
                 )
@@ -368,7 +367,7 @@ object AuthRoutes:
               )
           case None => Forbidden()
         }
-      case request @ POST -> Root / "reset" / code => {
+      case request @ POST -> Root / "reset" / code =>
 
         def extractNewPassword(form: UrlForm): Option[(String, String)] =
           for {
@@ -410,9 +409,7 @@ object AuthRoutes:
                 )
             }
 
-        val csrfCheck = for {
-          token <- request.attributes.lookup(apollo.config.csrfTokenKey)
-        } yield apollo.services.reset.getReset(code).value.flatMap {
+        apollo.services.reset.getReset(code).value.flatMap {
           case Left(_) =>
             resetCodeRedirectWithError(code)("Invalid or expired reset code")
           case Right(reset) =>
@@ -432,9 +429,7 @@ object AuthRoutes:
               }
             }
         }
-        csrfCheck.getOrElse(Forbidden())
-      }
-      case request @ POST -> Root / "logout" => {
+      case request @ POST -> Root / "logout" =>
         request.cookies.find(_.name == "session_token") match {
           case Some(cookie) =>
             apollo.services.session
@@ -448,4 +443,3 @@ object AuthRoutes:
           case None =>
             SeeOther(Location(uri"/"))
         }
-      }
