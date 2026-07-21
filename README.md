@@ -28,8 +28,8 @@ Apollo ships as three artifacts so you only depend on what you need:
 
 ```scala
 mvnDeps = Seq(
-  mvn"me.joshuakfarrar::apollo-http4s:0.1.0-SNAPSHOT",
-  mvn"me.joshuakfarrar::apollo-doobie:0.1.0-SNAPSHOT"
+  mvn"io.github.joshuakfarrar::apollo-http4s:0.1.0-SNAPSHOT",
+  mvn"io.github.joshuakfarrar::apollo-doobie:0.1.0-SNAPSHOT"
 )
 ```
 
@@ -67,7 +67,7 @@ Releases go through the [Sonatype Central Portal](https://central.sonatype.com).
 $ mill mill.scalalib.SonatypeCentralPublishModule/publishAll --publishArtifacts __.publishArtifacts
 ```
 
-The `me.joshuakfarrar` namespace must be verified on the portal (DNS TXT record) before the first release.
+The `io.github.joshuakfarrar` namespace is verified on the portal automatically via GitHub account ownership.
 
 We promise we'll get this on Maven Central and add generators to automate some of the setup soon.
 

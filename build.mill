@@ -14,7 +14,7 @@ trait ApolloModule extends ScalaModule with PublishModule {
 
   def pomSettings = PomSettings(
     description = "A Devise-like authentication library for Http4s",
-    organization = "me.joshuakfarrar",
+    organization = "io.github.joshuakfarrar",
     url = "https://github.com/joshuakfarrar/apollo",
     licenses = Seq(License.MIT),
     versionControl = VersionControl.github("joshuakfarrar", "apollo"),
