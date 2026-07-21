@@ -14,6 +14,25 @@ It has a few features:
 
 Long-term, we'd like to also support Omniauth and all functionality of the standard Devise module
 
+## Modules
+
+Apollo ships as three artifacts so you only depend on what you need:
+
+| Module | What's inside | Depends on |
+|--------|---------------|------------|
+| `apollo-core` | Type classes (`HasId`, `HasEmail`, `HasPassword`, `Hashable`) and the service traits | cats, cats-effect-std |
+| `apollo-doobie` | Doobie/PostgreSQL implementations of the service traits (`DoobieUserService`, ...) | `apollo-core`, doobie |
+| `apollo-http4s` | `AuthRoutes`, `SessionAuth`, CSRF & flash middleware, default Twirl templates | `apollo-core`, http4s |
+
+`apollo-http4s` never touches the database and `apollo-doobie` never touches HTTP — bring your own implementations of the `apollo-core` traits (Skunk, Slick, a different mailer) and everything still composes.
+
+```scala
+mvnDeps = Seq(
+  mvn"me.joshuakfarrar::apollo-http4s:0.1.0-SNAPSHOT",
+  mvn"me.joshuakfarrar::apollo-doobie:0.1.0-SNAPSHOT"
+)
+```
+
 ## Getting Started
 
 First, pull down Apollo and add it to your local ivy cache:
@@ -21,7 +40,7 @@ First, pull down Apollo and add it to your local ivy cache:
 ```shell
 $ git clone https://github.com/joshuakfarrar/apollo
 $ cd apollo
-$ .\mill.bat --no-server apollo-auth.publishLocal
+$ .\mill.bat --no-server __.publishLocal
 ```
 
 Then, use our fancy new [Giter8](https://www.foundweekends.org/giter8) template!
@@ -39,6 +58,16 @@ webapp $ .\mill.bat --no-server webapp.run
 ```
 
 Browse to [http://localhost:8080](http://localhost:8080) *et voilà!*
+
+## Publishing to Maven Central
+
+Releases go through the [Sonatype Central Portal](https://central.sonatype.com). With `SONATYPE_USERNAME`/`SONATYPE_PASSWORD` and a PGP key configured:
+
+```shell
+$ mill mill.scalalib.SonatypeCentralPublishModule/publishAll --publishArtifacts __.publishArtifacts
+```
+
+The `me.joshuakfarrar` namespace must be verified on the portal (DNS TXT record) before the first release.
 
 We promise we'll get this on Maven Central and add generators to automate some of the setup soon.
 
