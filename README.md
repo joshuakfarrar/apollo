@@ -58,7 +58,18 @@ mailer:
   confirmation = Some(DoobieConfirmationService[F, User, UserId](xa))
 ```
 
-When `confirmation` is `None`, the `/confirm` route is not served.
+When `confirmation` is `None`, the `/confirm` route is not served. When it is
+provided, login is refused until the account is confirmed.
+
+### Security notes
+
+- Session tokens and confirmation/reset codes are generated from the
+  `Random[F]` you provide. Use a cryptographically secure one:
+  `Random.javaSecuritySecureRandom[F]`, not `Random.scalaUtilRandom[F]`.
+- Password-reset codes expire after one hour by default; tune with
+  `DoobieResetService(xa, resetTtl = 30.minutes)`.
+- `MailService.console` prints reset codes to the server log — development
+  only.
 
 ### A default home page
 

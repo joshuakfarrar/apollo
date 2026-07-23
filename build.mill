@@ -28,11 +28,23 @@ trait ApolloModule extends ScalaModule with PublishModule {
   )
 }
 
+val MunitVersion = "1.1.0"
+val MunitCatsEffectVersion = "2.0.0"
+
+trait ApolloTests extends TestModule.Munit {
+  def mvnDeps = Seq(
+    mvn"org.scalameta::munit:$MunitVersion",
+    mvn"org.typelevel::munit-cats-effect:$MunitCatsEffectVersion"
+  )
+}
+
 object `apollo-core` extends ApolloModule {
   def mvnDeps = Seq(
     mvn"org.typelevel::cats-core:$CatsVersion",
     mvn"org.typelevel::cats-effect-std:$CatsEffectVersion"
   )
+
+  object test extends ScalaTests with ApolloTests
 }
 
 object `apollo-doobie` extends ApolloModule {
@@ -60,4 +72,6 @@ object `apollo-http4s` extends ApolloModule with TwirlModule {
     mvn"org.http4s::http4s-twirl:1.0.0-M38",
     mvn"com.lihaoyi::upickle:4.1.0"
   )
+
+  object test extends ScalaTests with ApolloTests
 }

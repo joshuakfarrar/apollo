@@ -14,7 +14,7 @@ import org.http4s.twirl.*
 import java.sql.SQLException
 
 object AuthRoutes:
-  def routes[F[_]: Async, U: HasPassword: HasEmail, E, I](
+  def routes[F[_]: Async, U: HasPassword: HasEmail, I, E](
       apollo: Apollo[F, U, I, E]
   )(implicit PW: Hashable[F, String]): HttpRoutes[F] =
     val dsl = new Http4sDsl[F] {}
@@ -107,9 +107,24 @@ object AuthRoutes:
             )
           )
         case Left(error) =>
-          loginRedirectWithError(
-            s"Could not create session, you are not logged in: ${error.getMessage}"
-          )
+          loginRedirectWithError("Could not create session. Please try again")
+      }
+
+    def confirmedSignIn(user: U): F[Response[F]] =
+      apollo.services.confirmation match {
+        case None => signIn(user)
+        case Some(confirmation) =>
+          confirmation.isConfirmed(user).value.flatMap {
+            case Right(true) => signIn(user)
+            case Right(false) =>
+              loginRedirectWithError(
+                "Please confirm your account before logging in"
+              )
+            case Left(_) =>
+              loginRedirectWithError(
+                "Could not sign you in. Please try again"
+              )
+          }
       }
 
     def createUser(name: String, email: String, password: String) =
@@ -127,9 +142,10 @@ object AuthRoutes:
                 sqlEx.getSQLState match {
                   case "23505" | "23000" =>
                     "User with that e-mail already exists"
-                  case state => s"Database error ($state)"
+                  case _ =>
+                    "Could not create your account. Please try again"
                 }
-              case _ => s"Unknown error: ${error.getClass.getName}"
+              case _ => "Could not create your account. Please try again"
             }
           }
       }
@@ -254,7 +270,7 @@ object AuthRoutes:
               case Some((email, password)) =>
                 authenticateUser(email, password).value.flatMap {
                   case Right((user, authenticated)) =>
-                    if (authenticated) signIn(user)
+                    if (authenticated) confirmedSignIn(user)
                     else
                       loginRedirectWithError(
                         "Could not find user with that email or password"
@@ -371,7 +387,7 @@ object AuthRoutes:
                 }
               case Left(error) =>
                 resetCodeRedirectWithError(code)(
-                  s"Failed to update password: ${error.getMessage}"
+                  "Failed to update password. Please try again"
                 )
             }
 

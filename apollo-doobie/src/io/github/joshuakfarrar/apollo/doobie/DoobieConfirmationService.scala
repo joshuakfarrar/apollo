@@ -32,6 +32,15 @@ object DoobieConfirmationService {
             .attemptT
       } yield code
 
+      override def isConfirmed(user: U): EitherT[F, Throwable, Boolean] =
+        EitherT {
+          sql"SELECT confirmed_at IS NOT NULL FROM users WHERE id = ${H.id(user).toString}::uuid"
+            .query[Boolean]
+            .unique
+            .transact(xa)
+            .attempt
+        }
+
       override def confirmByCode(code: String): OptionT[F, Throwable] =
         (
           sql"""
