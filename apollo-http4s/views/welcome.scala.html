@@ -1,0 +1,21 @@
+@(csrfToken: String, user: Option[String] = None)
+
+@layout {
+<h2 id="title">Welcome to Apollo</h2>
+
+@user match {
+  case Some(email) => {
+    <p>Signed in as <strong>@email</strong>.</p>
+
+    <form action="/logout" method="POST">
+        <input type="hidden" name="_csrf" value="@csrfToken">
+        <button class="btn btn-danger" type="submit">Log out</button>
+    </form>
+  }
+  case None => {
+    <p>You are not signed in.</p>
+
+    <a href="/login" class="btn btn-primary">Log in or register</a>
+  }
+}
+}
