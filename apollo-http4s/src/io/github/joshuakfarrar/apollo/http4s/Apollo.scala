@@ -28,12 +28,16 @@ object ApolloTemplates {
   )
 }
 
+/** When `confirmation` is `None` (the default), registration signs the
+  * user in immediately and the /confirm route is not served. Provide
+  * `Some(service)` to require e-mail confirmation before login.
+  */
 case class ApolloServices[F[_], U, I, E](
     user: UserService[F, U, I],
-    confirmation: ConfirmationService[F, U, I],
     mail: MailService[F, E, Unit],
     session: SessionService[F, U, I],
-    reset: ResetService[F, U, I]
+    reset: ResetService[F, U, I],
+    confirmation: Option[ConfirmationService[F, U, I]] = None
 )
 
 case class Apollo[F[_], U, I, E](

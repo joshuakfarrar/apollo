@@ -33,6 +33,33 @@ mvnDeps = Seq(
 )
 ```
 
+### Account confirmation is opt-in
+
+Out of the box Apollo needs no mail provider: registration signs the user
+straight in, and `MailService.console` prints password-reset codes to the
+server log instead of sending e-mail.
+
+```scala
+given Console[F] = Console.make[F]
+
+ApolloServices[F, User, UserId, String](
+  user = DoobieUserService[F, User, UserId](xa),
+  mail = MailService.console[F],
+  session = DoobieSessionService[F, User, UserId](xa),
+  reset = DoobieResetService[F, User, UserId](xa)
+)
+```
+
+To require e-mail confirmation before login, provide the service and a real
+mailer:
+
+```scala
+  mail = mailgunMailService, // your MailService[F, E, Unit]
+  confirmation = Some(DoobieConfirmationService[F, User, UserId](xa))
+```
+
+When `confirmation` is `None`, the `/confirm` route is not served.
+
 ## Getting Started
 
 First, pull down Apollo and add it to your local ivy cache:
