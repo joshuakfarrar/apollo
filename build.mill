@@ -70,6 +70,7 @@ object `apollo-http4s` extends ApolloModule with TwirlModule {
     mvn"org.http4s::http4s-crypto:0.2.5-RC1",
     // no M44 build of http4s-twirl exists; M38 is the latest
     mvn"org.http4s::http4s-twirl:1.0.0-M38",
+    mvn"org.typelevel::log4cats-core:2.7.0",
     mvn"com.lihaoyi::upickle:4.1.0"
   )
 

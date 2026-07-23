@@ -8,6 +8,8 @@ import munit.CatsEffectSuite
 import org.http4s.*
 import org.http4s.implicits.*
 import org.http4s.server.middleware.CSRF
+import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.noop.NoOpFactory
 import org.typelevel.vault.Key
 import play.twirl.api.Html
 
@@ -25,6 +27,8 @@ case class TestUser(
 
 /** In-memory stub services and a fully wired Apollo for route tests. */
 trait ApolloTestKit extends CatsEffectSuite:
+
+  given LoggerFactory[IO] = NoOpFactory[IO]
 
   given HasId[TestUser, UUID] = _.id
   given HasEmail[TestUser] = _.email

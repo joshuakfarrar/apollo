@@ -10,15 +10,18 @@ import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.Location
 import org.http4s.implicits.uri
 import org.http4s.twirl.*
+import org.typelevel.log4cats.LoggerFactory
 
 import java.sql.SQLException
 
 object AuthRoutes:
-  def routes[F[_]: Async, U: HasPassword: HasEmail, I, E](
+  def routes[F[_]: Async: LoggerFactory, U: HasPassword: HasEmail, I, E](
       apollo: Apollo[F, U, I, E]
   )(implicit PW: Hashable[F, String]): HttpRoutes[F] =
     val dsl = new Http4sDsl[F] {}
     import dsl.*
+
+    val log = LoggerFactory[F].getLogger
 
     def renderLogin(
         csrfToken: String,
@@ -107,7 +110,8 @@ object AuthRoutes:
             )
           )
         case Left(error) =>
-          loginRedirectWithError("Could not create session. Please try again")
+          log.warn(error)("Failed to create session") *>
+            loginRedirectWithError("Could not create session. Please try again")
       }
 
     def confirmedSignIn(user: U): F[Response[F]] =
@@ -120,10 +124,11 @@ object AuthRoutes:
               loginRedirectWithError(
                 "Please confirm your account before logging in"
               )
-            case Left(_) =>
-              loginRedirectWithError(
-                "Could not sign you in. Please try again"
-              )
+            case Left(error) =>
+              log.warn(error)("Failed to check confirmation status") *>
+                loginRedirectWithError(
+                  "Could not sign you in. Please try again"
+                )
           }
       }
 
@@ -135,18 +140,18 @@ object AuthRoutes:
             case None               => signIn(user)
           }
         case Left(error) =>
-          registrationRedirectWithError {
-            error match {
-              case sqlEx: SQLException =>
-                // SQLState 23505 is a unique-constraint violation (SQL standard)
-                sqlEx.getSQLState match {
-                  case "23505" | "23000" =>
-                    "User with that e-mail already exists"
-                  case _ =>
-                    "Could not create your account. Please try again"
-                }
-              case _ => "Could not create your account. Please try again"
-            }
+          error match {
+            // SQLState 23505 is a unique-constraint violation (SQL standard)
+            case sqlEx: SQLException
+                if sqlEx.getSQLState == "23505" || sqlEx.getSQLState == "23000" =>
+              registrationRedirectWithError(
+                "User with that e-mail already exists"
+              )
+            case _ =>
+              log.warn(error)("Failed to create user") *>
+                registrationRedirectWithError(
+                  "Could not create your account. Please try again"
+                )
           }
       }
 
@@ -166,7 +171,10 @@ object AuthRoutes:
 
       confirmationResult.value.flatMap(
         _.fold(
-          _ => registrationRedirectWithError("Failed to create new user"),
+          error =>
+            log.warn(error)(
+              "Failed to create confirmation or send confirmation e-mail"
+            ) *> registrationRedirectWithError("Failed to create new user"),
           _ =>
             loginRedirectWithSuccess(
               "Check your e-mail to confirm your account before logging in"
@@ -275,10 +283,11 @@ object AuthRoutes:
                       loginRedirectWithError(
                         "Could not find user with that email or password"
                       )
-                  case Left(_) =>
-                    loginRedirectWithError(
-                      "Could not find user with that email or password"
-                    )
+                  case Left(error) =>
+                    log.debug(error)("Login failed while fetching user") *>
+                      loginRedirectWithError(
+                        "Could not find user with that email or password"
+                      )
                 }
               case None => loginRedirectWithError("Missing email or password")
             }
@@ -386,14 +395,16 @@ object AuthRoutes:
                   )
                 }
               case Left(error) =>
-                resetCodeRedirectWithError(code)(
-                  "Failed to update password. Please try again"
-                )
+                log.warn(error)("Failed to update password") *>
+                  resetCodeRedirectWithError(code)(
+                    "Failed to update password. Please try again"
+                  )
             }
 
         apollo.services.reset.getReset(code).value.flatMap {
-          case Left(_) =>
-            resetCodeRedirectWithError(code)("Invalid or expired reset code")
+          case Left(error) =>
+            log.debug(error)("Reset code lookup failed") *>
+              resetCodeRedirectWithError(code)("Invalid or expired reset code")
           case Right(reset) =>
             request.as[UrlForm].flatMap { form =>
               extractNewPassword(form) match {
