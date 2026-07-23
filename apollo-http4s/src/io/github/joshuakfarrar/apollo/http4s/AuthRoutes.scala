@@ -91,9 +91,34 @@ object AuthRoutes:
       )
     }
 
+    def signIn(user: U): F[Response[F]] =
+      apollo.services.session.createSession(user).value.flatMap {
+        case Right(token) =>
+          SeeOther(Location(uri"/")).map(
+            _.addCookie(
+              ResponseCookie(
+                name = "session_token",
+                content = token,
+                path = Some("/"),
+                httpOnly = true,
+                secure = true,
+                sameSite = Some(SameSite.Strict)
+              )
+            )
+          )
+        case Left(error) =>
+          loginRedirectWithError(
+            s"Could not create session, you are not logged in: ${error.getMessage}"
+          )
+      }
+
     def createUser(name: String, email: String, password: String) =
       apollo.services.user.createUser(name, email, password).value.flatMap {
-        case Right(user) => createConfirmation(user)
+        case Right(user) =>
+          apollo.services.confirmation match {
+            case Some(confirmation) => createConfirmation(confirmation, user)
+            case None               => signIn(user)
+          }
         case Left(error) =>
           registrationRedirectWithError {
             error match {
@@ -109,9 +134,12 @@ object AuthRoutes:
           }
       }
 
-    def createConfirmation(user: U) = {
+    def createConfirmation(
+        confirmation: ConfirmationService[F, U, I],
+        user: U
+    ) = {
       val confirmationResult = for {
-        code <- apollo.services.confirmation.createConfirmation(user)
+        code <- confirmation.createConfirmation(user)
         _ <- apollo.services.mail.send(
           apollo.services.mail.confirmationEmail(
             implicitly[HasEmail[U]].email(user),
@@ -198,27 +226,6 @@ object AuthRoutes:
           }
       case request @ POST -> Root / "login" =>
 
-        def createSessionResponse(user: U): F[Response[F]] =
-          apollo.services.session.createSession(user).value.flatMap {
-            case Right(token) =>
-              SeeOther(Location(uri"/")).map(
-                _.addCookie(
-                  ResponseCookie(
-                    name = "session_token",
-                    content = token,
-                    path = Some("/"),
-                    httpOnly = true,
-                    secure = true,
-                    sameSite = Some(SameSite.Strict)
-                  )
-                )
-              )
-            case Left(error) =>
-              loginRedirectWithError(
-                s"Could not create session, you are not logged in: ${error.getMessage}"
-              )
-          }
-
         def extractCredentials(form: UrlForm): Option[(String, String)] =
           for {
             email <- form.getFirst("email")
@@ -247,7 +254,7 @@ object AuthRoutes:
               case Some((email, password)) =>
                 authenticateUser(email, password).value.flatMap {
                   case Right((user, authenticated)) =>
-                    if (authenticated) createSessionResponse(user)
+                    if (authenticated) signIn(user)
                     else
                       loginRedirectWithError(
                         "Could not find user with that email or password"
@@ -261,10 +268,16 @@ object AuthRoutes:
             }
           }
       case GET -> Root / "confirm" / code =>
-        apollo.services.confirmation.confirmByCode(code).value.flatMap {
-          case Some(_) => BadRequest("Unable to confirm your account")
-          case _ =>
-            loginRedirectWithSuccess("Account confirmed! You can now log in")
+        apollo.services.confirmation match {
+          case None => NotFound()
+          case Some(confirmation) =>
+            confirmation.confirmByCode(code).value.flatMap {
+              case Some(_) => BadRequest("Unable to confirm your account")
+              case _ =>
+                loginRedirectWithSuccess(
+                  "Account confirmed! You can now log in"
+                )
+            }
         }
       case request @ GET -> Root / "reset" =>
         request.attributes.lookup(apollo.config.csrfTokenKey) match {
