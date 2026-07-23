@@ -11,6 +11,7 @@ import io.github.joshuakfarrar.apollo.core.{HasId, Reset, ResetService}
 import io.github.joshuakfarrar.apollo.core.util.generateAlphaNumericString
 
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
+import scala.concurrent.duration.*
 
 object DoobieResetService {
 
@@ -21,7 +22,8 @@ object DoobieResetService {
   }
 
   def apply[F[_], U, I: Get](
-      xa: Transactor[F]
+      xa: Transactor[F],
+      resetTtl: FiniteDuration = 1.hour
   )(using
       R: Random[F],
       C: Concurrent[F],
@@ -44,7 +46,11 @@ object DoobieResetService {
 
       override def getReset(code: String): EitherT[F, Throwable, Reset[I]] =
         EitherT {
-          sql"SELECT user_id, code, created_at FROM resets WHERE code = $code"
+          sql"""
+            SELECT user_id, code, created_at FROM resets
+            WHERE code = $code
+              AND created_at > NOW() - (${resetTtl.toSeconds} * INTERVAL '1 second')
+          """
             .query[Reset[I]]
             .unique
             .transact(xa)

@@ -6,4 +6,6 @@ trait ConfirmationService[F[_], U, I] {
   def createConfirmation(user: U): EitherT[F, Throwable, String]
 
   def confirmByCode(code: String): OptionT[F, Throwable]
+
+  def isConfirmed(user: U): EitherT[F, Throwable, Boolean]
 }

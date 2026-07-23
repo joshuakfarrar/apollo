@@ -17,7 +17,7 @@ import play.twirl.api.Html
   * }}}
   */
 object WelcomeRoutes:
-  def routes[F[_]: Async, U: HasEmail, E, I](
+  def routes[F[_]: Async, U: HasEmail, I, E](
       apollo: Apollo[F, U, I, E],
       template: (String, Option[String]) => Html = (csrfToken, user) =>
         html.welcome(csrfToken, user)
