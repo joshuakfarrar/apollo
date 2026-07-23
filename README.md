@@ -1,10 +1,9 @@
 # Apollo
 
 [![Scala](https://img.shields.io/badge/Scala%203-%23de3423.svg?logo=scala&logoColor=white)](https://www.scala-lang.org/)
+[![CI](https://github.com/joshuakfarrar/apollo/actions/workflows/ci.yml/badge.svg)](https://github.com/joshuakfarrar/apollo/actions/workflows/ci.yml)
 
-🚧 This code is under development and is NOT meant for production use! 🚧
-
-An easy-to-use Devise-like authentication solution for Http4s. It will become configurable and more modular, so that you only need to use what you really need.
+An easy-to-use Devise-like authentication solution for Http4s. It's modular, so you only depend on what you really need.
 
 It has a few features:
 
@@ -117,8 +116,8 @@ Releases go through the [Sonatype Central Portal](https://central.sonatype.com).
 $ mill mill.scalalib.SonatypeCentralPublishModule/publishAll --publishArtifacts __.publishArtifacts
 ```
 
-The `io.github.joshuakfarrar` namespace is verified on the portal automatically via GitHub account ownership.
+The `io.github.joshuakfarrar` namespace is verified on the portal automatically via GitHub account ownership. Pushing a `v*` tag publishes automatically via GitHub Actions.
 
-We promise we'll get this on Maven Central and add generators to automate some of the setup soon.
+We promise we'll add generators to automate some of the setup soon.
 
 🎉
