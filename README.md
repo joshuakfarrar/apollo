@@ -60,6 +60,18 @@ mailer:
 
 When `confirmation` is `None`, the `/confirm` route is not served.
 
+### A default home page
+
+Apollo's flows redirect to `/` after login, logout, and registration.
+Until your application has a real home page, mount the optional scaffold
+that shows who is signed in (with a working log-out button):
+
+```scala
+WelcomeRoutes.routes(apollo) <+> AuthRoutes.routes(apollo)
+```
+
+Replace it by dropping that line — Apollo never claims `/` on its own.
+
 ## Getting Started
 
 First, pull down Apollo and add it to your local ivy cache:
