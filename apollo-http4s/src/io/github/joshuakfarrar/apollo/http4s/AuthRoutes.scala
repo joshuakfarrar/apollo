@@ -12,8 +12,6 @@ import org.http4s.implicits.uri
 import org.http4s.twirl.*
 import org.typelevel.log4cats.LoggerFactory
 
-import java.sql.SQLException
-
 object AuthRoutes:
   def routes[F[_]: Async: LoggerFactory, U: HasPassword: HasEmail, I, E](
       apollo: Apollo[F, U, I, E]
@@ -22,6 +20,17 @@ object AuthRoutes:
     import dsl.*
 
     val log = LoggerFactory[F].getLogger
+
+    /** Business outcomes arrive as `AuthError`; anything raised in F is
+      * infrastructure. Routes wrap themselves in `guarded` so users see a
+      * friendly flash either way, with the underlying failure logged.
+      */
+    def guarded(fallback: => F[Response[F]])(
+        action: F[Response[F]]
+    ): F[Response[F]] =
+      action.handleErrorWith { error =>
+        log.error(error)("Unexpected failure in auth route") *> fallback
+      }
 
     def renderLogin(
         csrfToken: String,
@@ -95,40 +104,31 @@ object AuthRoutes:
     }
 
     def signIn(user: U): F[Response[F]] =
-      apollo.services.session.createSession(user).value.flatMap {
-        case Right(token) =>
-          SeeOther(Location(uri"/")).map(
-            _.addCookie(
-              ResponseCookie(
-                name = "session_token",
-                content = token,
-                path = Some("/"),
-                httpOnly = true,
-                secure = true,
-                sameSite = Some(SameSite.Strict)
-              )
+      apollo.services.session.createSession(user).flatMap { token =>
+        SeeOther(Location(uri"/")).map(
+          _.addCookie(
+            ResponseCookie(
+              name = "session_token",
+              content = token,
+              path = Some("/"),
+              httpOnly = true,
+              secure = true,
+              sameSite = Some(SameSite.Strict)
             )
           )
-        case Left(error) =>
-          log.warn(error)("Failed to create session") *>
-            loginRedirectWithError("Could not create session. Please try again")
+        )
       }
 
     def confirmedSignIn(user: U): F[Response[F]] =
       apollo.services.confirmation match {
         case None => signIn(user)
         case Some(confirmation) =>
-          confirmation.isConfirmed(user).value.flatMap {
-            case Right(true) => signIn(user)
-            case Right(false) =>
+          confirmation.isConfirmed(user).flatMap {
+            case true => signIn(user)
+            case false =>
               loginRedirectWithError(
                 "Please confirm your account before logging in"
               )
-            case Left(error) =>
-              log.warn(error)("Failed to check confirmation status") *>
-                loginRedirectWithError(
-                  "Could not sign you in. Please try again"
-                )
           }
       }
 
@@ -147,7 +147,7 @@ object AuthRoutes:
           invite match {
             case None => proceed
             case Some((invitations, code)) =>
-              invitations.consumeInvitation(code).value.flatMap {
+              invitations.consumeInvitation(code).attempt.flatMap {
                 case Left(error) =>
                   log.warn(error)("Failed to consume invitation") *>
                     proceed.map(_.removeCookie("invite"))
@@ -155,20 +155,14 @@ object AuthRoutes:
                   proceed.map(_.removeCookie("invite"))
               }
           }
-        case Left(error) =>
-          error match {
-            // SQLState 23505 is a unique-constraint violation (SQL standard)
-            case sqlEx: SQLException
-                if sqlEx.getSQLState == "23505" || sqlEx.getSQLState == "23000" =>
-              registrationRedirectWithError(
-                "User with that e-mail already exists"
-              )
-            case _ =>
-              log.warn(error)("Failed to create user") *>
-                registrationRedirectWithError(
-                  "Could not create your account. Please try again"
-                )
-          }
+        case Left(AuthError.EmailTaken) =>
+          registrationRedirectWithError(
+            "User with that e-mail already exists"
+          )
+        case Left(_) =>
+          registrationRedirectWithError(
+            "Could not create your account. Please try again"
+          )
       }
 
     def createConfirmation(
@@ -183,20 +177,18 @@ object AuthRoutes:
             code
           )
         )
-      } yield user
+      } yield ()
 
-      confirmationResult.value.flatMap(
-        _.fold(
-          error =>
-            log.warn(error)(
-              "Failed to create confirmation or send confirmation e-mail"
-            ) *> registrationRedirectWithError("Failed to create new user"),
-          _ =>
-            loginRedirectWithSuccess(
-              "Check your e-mail to confirm your account before logging in"
-            )
-        )
-      )
+      confirmationResult.attempt.flatMap {
+        case Left(error) =>
+          log.warn(error)(
+            "Failed to create confirmation or send confirmation e-mail"
+          ) *> registrationRedirectWithError("Failed to create new user")
+        case Right(_) =>
+          loginRedirectWithSuccess(
+            "Check your e-mail to confirm your account before logging in"
+          )
+      }
     }
 
     case class RegistrationForm(
@@ -248,53 +240,59 @@ object AuthRoutes:
             confirmPassword <- form.getFirst("confirmPassword")
           } yield RegistrationForm(name, email, password, confirmPassword)
 
-        request
-          .as[UrlForm]
-          .flatMap { form =>
-            parseFormData(form) match {
-              case Some(parsed) =>
-                validateRegistrationForm(parsed) match {
-                  case Some(error) => registrationRedirectWithError(error)
-                  case None =>
-                    apollo.services.invitation match {
-                      case None =>
-                        createUser(
-                          parsed.name,
-                          parsed.email,
-                          parsed.password,
-                          None
-                        )
-                      case Some(invitations) =>
-                        request.cookies
-                          .find(_.name == "invite")
-                          .map(_.content) match {
-                          case None =>
-                            registrationRedirectWithError(
-                              "Registration is by invitation only"
-                            )
-                          case Some(code) =>
-                            invitations.getInvitation(code).value.flatMap {
-                              case Left(_) =>
-                                registrationRedirectWithError(
-                                  "Invalid or expired invitation"
-                                )
-                              case Right(_) =>
-                                createUser(
-                                  parsed.name,
-                                  parsed.email,
-                                  parsed.password,
-                                  Some((invitations, code))
-                                )
-                            }
-                        }
-                    }
-                }
-              case None =>
-                registrationRedirectWithError(
-                  "Missing name, email, password, or password confirmation"
-                )
+        guarded(
+          registrationRedirectWithError(
+            "Could not create your account. Please try again"
+          )
+        ) {
+          request
+            .as[UrlForm]
+            .flatMap { form =>
+              parseFormData(form) match {
+                case Some(parsed) =>
+                  validateRegistrationForm(parsed) match {
+                    case Some(error) => registrationRedirectWithError(error)
+                    case None =>
+                      apollo.services.invitation match {
+                        case None =>
+                          createUser(
+                            parsed.name,
+                            parsed.email,
+                            parsed.password,
+                            None
+                          )
+                        case Some(invitations) =>
+                          request.cookies
+                            .find(_.name == "invite")
+                            .map(_.content) match {
+                            case None =>
+                              registrationRedirectWithError(
+                                "Registration is by invitation only"
+                              )
+                            case Some(code) =>
+                              invitations.getInvitation(code).value.flatMap {
+                                case Left(_) =>
+                                  registrationRedirectWithError(
+                                    "Invalid or expired invitation"
+                                  )
+                                case Right(_) =>
+                                  createUser(
+                                    parsed.name,
+                                    parsed.email,
+                                    parsed.password,
+                                    Some((invitations, code))
+                                  )
+                              }
+                          }
+                      }
+                  }
+                case None =>
+                  registrationRedirectWithError(
+                    "Missing name, email, password, or password confirmation"
+                  )
+              }
             }
-          }
+        }
       case request @ POST -> Root / "login" =>
 
         def extractCredentials(form: UrlForm): Option[(String, String)] =
@@ -306,49 +304,51 @@ object AuthRoutes:
         def authenticateUser(
             email: String,
             password: String
-        ): EitherT[F, Throwable, (U, Boolean)] =
+        ): EitherT[F, AuthError, (U, Boolean)] =
           for {
             user <- apollo.services.user.fetchUser(email)
-            passwordsMatch <- EitherT(
+            passwordsMatch <- EitherT.liftF(
               PW.verify(password, implicitly[HasPassword[U]].password(user))
-                .map(Right(_))
             )
-          } yield (
-            user,
-            passwordsMatch
-          )
+          } yield (user, passwordsMatch)
 
-        request
-          .as[UrlForm]
-          .flatMap { form =>
-            extractCredentials(form) match {
-              case Some((email, password)) =>
-                authenticateUser(email, password).value.flatMap {
-                  case Right((user, authenticated)) =>
-                    if (authenticated) confirmedSignIn(user)
-                    else
+        guarded(
+          loginRedirectWithError("Could not sign you in. Please try again")
+        ) {
+          request
+            .as[UrlForm]
+            .flatMap { form =>
+              extractCredentials(form) match {
+                case Some((email, password)) =>
+                  authenticateUser(email, password).value.flatMap {
+                    case Right((user, authenticated)) =>
+                      if (authenticated) confirmedSignIn(user)
+                      else
+                        loginRedirectWithError(
+                          "Could not find user with that email or password"
+                        )
+                    case Left(_) =>
                       loginRedirectWithError(
                         "Could not find user with that email or password"
                       )
-                  case Left(error) =>
-                    log.debug(error)("Login failed while fetching user") *>
-                      loginRedirectWithError(
-                        "Could not find user with that email or password"
-                      )
-                }
-              case None => loginRedirectWithError("Missing email or password")
+                  }
+                case None =>
+                  loginRedirectWithError("Missing email or password")
+              }
             }
-          }
+        }
       case GET -> Root / "confirm" / code =>
         apollo.services.confirmation match {
           case None => NotFound()
           case Some(confirmation) =>
-            confirmation.confirmByCode(code).value.flatMap {
-              case Some(_) => BadRequest("Unable to confirm your account")
-              case _ =>
-                loginRedirectWithSuccess(
-                  "Account confirmed! You can now log in"
-                )
+            guarded(BadRequest("Unable to confirm your account")) {
+              confirmation.confirmByCode(code).value.flatMap {
+                case Left(_) => BadRequest("Unable to confirm your account")
+                case Right(_) =>
+                  loginRedirectWithSuccess(
+                    "Account confirmed! You can now log in"
+                  )
+              }
             }
         }
       case request @ GET -> Root / "reset" =>
@@ -373,15 +373,26 @@ object AuthRoutes:
             case Some(email) =>
               val result = for {
                 user <- apollo.services.user.fetchUser(email)
-                code <- apollo.services.reset.createReset(user)
-                _ <- apollo.services.mail.send(
-                  apollo.services.mail
-                    .resetEmail(implicitly[HasEmail[U]].email(user), code)
+                code <- EitherT.liftF[F, AuthError, String](
+                  apollo.services.reset.createReset(user)
                 )
-              } yield code
+                _ <- EitherT.liftF[F, AuthError, Unit](
+                  apollo.services.mail.send(
+                    apollo.services.mail
+                      .resetEmail(implicitly[HasEmail[U]].email(user), code)
+                  )
+                )
+              } yield ()
 
-              result.value.flatMap { _ =>
-                resetRedirectWithError(
+              // Always the same response, whatever happened: reset requests
+              // must not reveal whether an account exists.
+              result.value.attempt.flatMap { outcome =>
+                val logFailure = outcome match {
+                  case Left(error) =>
+                    log.warn(error)("Failed to create or send password reset")
+                  case Right(_) => Async[F].unit
+                }
+                logFailure *> resetRedirectWithError(
                   "A password reset e-mail has been sent to the provided user's email address, if they exist"
                 )
               }
@@ -392,17 +403,18 @@ object AuthRoutes:
       case request @ GET -> Root / "reset" / code =>
         request.attributes.lookup(apollo.config.csrfTokenKey) match {
           case Some(token) =>
-            apollo.services.reset
-              .getReset(code)
-              .foldF(
-                error =>
-                  resetRedirectWithError(s"Invalid or expired reset code"),
-                reset =>
-                  withFlashCookie(request) { cookie =>
-                    val error = cookie.flatMap(_.get("message"))
-                    Ok(apollo.templates.resetPassword(token, error))
-                  }
-              )
+            guarded(resetRedirectWithError("Invalid or expired reset code")) {
+              apollo.services.reset
+                .getReset(code)
+                .foldF(
+                  _ => resetRedirectWithError("Invalid or expired reset code"),
+                  _ =>
+                    withFlashCookie(request) { cookie =>
+                      val error = cookie.flatMap(_.get("message"))
+                      Ok(apollo.templates.resetPassword(token, error))
+                    }
+                )
+            }
           case None => Forbidden()
         }
       case request @ POST -> Root / "reset" / code =>
@@ -430,53 +442,58 @@ object AuthRoutes:
             resetToken: Reset[I],
             newPassword: String
         ): F[Response[F]] =
-          apollo.services.user
-            .updatePassword(resetToken.userId, newPassword)
-            .value
-            .flatMap {
-              case Right(_) =>
-                // Invalidate the reset token after successful use
-                apollo.services.reset.invalidateReset(code).value.flatMap { _ =>
+          apollo.services.user.updatePassword(resetToken.userId, newPassword) *>
+            apollo.services.reset.invalidateReset(code).attempt.flatMap {
+              case Left(error) =>
+                // The password DID change; a stale reset row must not fail it
+                log.warn(error)("Failed to invalidate used reset code") *>
                   loginRedirectWithSuccess(
                     "Password successfully reset. Please log in with your new password"
                   )
-                }
-              case Left(error) =>
-                log.warn(error)("Failed to update password") *>
-                  resetCodeRedirectWithError(code)(
-                    "Failed to update password. Please try again"
-                  )
+              case Right(_) =>
+                loginRedirectWithSuccess(
+                  "Password successfully reset. Please log in with your new password"
+                )
             }
 
-        apollo.services.reset.getReset(code).value.flatMap {
-          case Left(error) =>
-            log.debug(error)("Reset code lookup failed") *>
+        guarded(
+          resetCodeRedirectWithError(code)(
+            "Failed to update password. Please try again"
+          )
+        ) {
+          apollo.services.reset.getReset(code).value.flatMap {
+            case Left(_) =>
               resetCodeRedirectWithError(code)("Invalid or expired reset code")
-          case Right(reset) =>
-            request.as[UrlForm].flatMap { form =>
-              extractNewPassword(form) match {
-                case Some((password, confirmPassword)) =>
-                  validatePasswords(password, confirmPassword) match {
-                    case Some(validationError) =>
-                      resetCodeRedirectWithError(code)(validationError)
-                    case None =>
-                      processPasswordReset(reset, password)
-                  }
-                case None =>
-                  resetCodeRedirectWithError(code)(
-                    "Missing password or password confirmation"
-                  )
+            case Right(reset) =>
+              request.as[UrlForm].flatMap { form =>
+                extractNewPassword(form) match {
+                  case Some((password, confirmPassword)) =>
+                    validatePasswords(password, confirmPassword) match {
+                      case Some(validationError) =>
+                        resetCodeRedirectWithError(code)(validationError)
+                      case None =>
+                        processPasswordReset(reset, password)
+                    }
+                  case None =>
+                    resetCodeRedirectWithError(code)(
+                      "Missing password or password confirmation"
+                    )
+                }
               }
-            }
+          }
         }
       case request @ POST -> Root / "logout" =>
         request.cookies.find(_.name == "session_token") match {
           case Some(cookie) =>
             apollo.services.session
               .deleteSession(cookie.content)
-              .value
-              .flatMap { _ =>
-                SeeOther(Location(uri"/")).map(
+              .attempt
+              .flatMap { outcome =>
+                val logFailure = outcome match {
+                  case Left(error) => log.warn(error)("Failed to delete session")
+                  case Right(_)    => Async[F].unit
+                }
+                logFailure *> SeeOther(Location(uri"/")).map(
                   _.removeCookie("session_token")
                 )
               }

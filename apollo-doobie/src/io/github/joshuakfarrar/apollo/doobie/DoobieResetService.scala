@@ -1,13 +1,13 @@
 package io.github.joshuakfarrar.apollo.doobie
 
-import cats.data.{EitherT, OptionT}
+import cats.data.EitherT
 import cats.effect.Concurrent
 import cats.effect.std.Random
 import cats.implicits.*
 import doobie.*
 import doobie.implicits.*
 import doobie.implicits.javatimedrivernative.*
-import io.github.joshuakfarrar.apollo.core.{HasId, Reset, ResetService}
+import io.github.joshuakfarrar.apollo.core.{AuthError, HasId, Reset, ResetService}
 import io.github.joshuakfarrar.apollo.core.util.generateAlphaNumericString
 
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
@@ -31,37 +31,32 @@ object DoobieResetService {
   ): ResetService[F, U, I] =
     new ResetService[F, U, I] {
 
-      override def createReset(
-          user: U
-      ): EitherT[F, Throwable, String] = for {
-        code <- EitherT.liftF(generateAlphaNumericString[F](32))
-        res <-
+      override def createReset(user: U): F[String] =
+        generateAlphaNumericString[F](32).flatMap { code =>
           sql"""
             INSERT INTO resets (user_id, code)
             VALUES (${H.id(user).toString}::uuid, $code)
           """.update.run
             .transact(xa)
-            .attemptT
-      } yield code
+            .as(code)
+        }
 
-      override def getReset(code: String): EitherT[F, Throwable, Reset[I]] =
-        EitherT {
+      override def getReset(code: String): EitherT[F, AuthError, Reset[I]] =
+        EitherT.fromOptionF(
           sql"""
             SELECT user_id, code, created_at FROM resets
             WHERE code = $code
               AND created_at > NOW() - (${resetTtl.toSeconds} * INTERVAL '1 second')
           """
             .query[Reset[I]]
-            .unique
-            .transact(xa)
-            .attempt
-        }
+            .option
+            .transact(xa),
+          AuthError.ResetNotFound
+        )
 
-      override def invalidateReset(code: String): OptionT[F, Throwable] =
+      override def invalidateReset(code: String): F[Unit] =
         sql"DELETE FROM resets WHERE code = $code".update.run
           .transact(xa)
-          .attemptT
-          .swap
-          .toOption
+          .void
     }
 }

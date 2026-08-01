@@ -1,12 +1,12 @@
 package io.github.joshuakfarrar.apollo.doobie
 
-import cats.data.{EitherT, OptionT}
+import cats.data.EitherT
 import cats.effect.Concurrent
 import cats.effect.std.Random
 import cats.implicits.*
 import doobie.*
 import doobie.implicits.*
-import io.github.joshuakfarrar.apollo.core.{ConfirmationService, HasId}
+import io.github.joshuakfarrar.apollo.core.{AuthError, ConfirmationService, HasId}
 import io.github.joshuakfarrar.apollo.core.util.generateAlphaNumericString
 
 object DoobieConfirmationService {
@@ -19,39 +19,38 @@ object DoobieConfirmationService {
   ): ConfirmationService[F, U, I] =
     new ConfirmationService[F, U, I] {
 
-      override def createConfirmation(
-          user: U
-      ): EitherT[F, Throwable, String] = for {
-        code <- EitherT.liftF(generateAlphaNumericString[F](32))
-        res <-
+      override def createConfirmation(user: U): F[String] =
+        generateAlphaNumericString[F](32).flatMap { code =>
           sql"""
             INSERT INTO confirmations (user_id, code)
             VALUES (${H.id(user).toString}::uuid, $code)
           """.update.run
             .transact(xa)
-            .attemptT
-      } yield code
-
-      override def isConfirmed(user: U): EitherT[F, Throwable, Boolean] =
-        EitherT {
-          sql"SELECT confirmed_at IS NOT NULL FROM users WHERE id = ${H.id(user).toString}::uuid"
-            .query[Boolean]
-            .unique
-            .transact(xa)
-            .attempt
+            .as(code)
         }
 
-      override def confirmByCode(code: String): OptionT[F, Throwable] =
-        (
-          sql"""
-            UPDATE users SET confirmed_at = NOW()
-            WHERE id = (SELECT user_id FROM confirmations WHERE code = $code)
-          """.update.run,
-          sql"DELETE FROM confirmations WHERE code = $code".update.run
-        ).mapN(_ + _)
+      override def confirmByCode(code: String): EitherT[F, AuthError, Unit] =
+        EitherT {
+          (for {
+            updated <-
+              sql"""
+                UPDATE users SET confirmed_at = NOW()
+                WHERE id = (SELECT user_id FROM confirmations WHERE code = $code)
+              """.update.run
+            _ <- sql"DELETE FROM confirmations WHERE code = $code".update.run
+          } yield updated)
+            .transact(xa)
+            .map { updated =>
+              if (updated > 0) ().asRight[AuthError]
+              else AuthError.ConfirmationNotFound.asLeft
+            }
+        }
+
+      override def isConfirmed(user: U): F[Boolean] =
+        sql"SELECT confirmed_at IS NOT NULL FROM users WHERE id = ${H.id(user).toString}::uuid"
+          .query[Boolean]
+          .option
           .transact(xa)
-          .attemptT
-          .swap
-          .toOption
+          .map(_.getOrElse(false))
     }
 }

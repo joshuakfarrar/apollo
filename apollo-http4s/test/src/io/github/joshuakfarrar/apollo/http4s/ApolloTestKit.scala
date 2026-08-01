@@ -1,6 +1,6 @@
 package io.github.joshuakfarrar.apollo.http4s
 
-import cats.data.{EitherT, OptionT}
+import cats.data.EitherT
 import cats.effect.{IO, Ref}
 import cats.implicits.*
 import io.github.joshuakfarrar.apollo.core.*
@@ -13,7 +13,6 @@ import org.typelevel.log4cats.noop.NoOpFactory
 import org.typelevel.vault.Key
 import play.twirl.api.Html
 
-import java.sql.SQLException
 import java.time.Instant
 import java.util.UUID
 
@@ -70,12 +69,12 @@ trait ApolloTestKit extends CatsEffectSuite:
             name: String,
             email: String,
             password: String
-        ): EitherT[IO, Throwable, TestUser] =
+        ): EitherT[IO, AuthError, TestUser] =
           for {
             pw <- EitherT.liftF(summon[Hashable[IO, String]].hash(password))
             user <- EitherT(users.modify { m =>
               if (m.contains(email))
-                (m, Left(new SQLException("duplicate", "23505")))
+                (m, Left(AuthError.EmailTaken))
               else {
                 val u = TestUser(
                   UUID.randomUUID(),
@@ -89,46 +88,41 @@ trait ApolloTestKit extends CatsEffectSuite:
             })
           } yield user
 
-        def fetchUser(email: String): EitherT[IO, Throwable, TestUser] =
+        def fetchUser(email: String): EitherT[IO, AuthError, TestUser] =
           EitherT.fromOptionF(
             users.get.map(_.get(email)),
-            new NoSuchElementException(email)
+            AuthError.UserNotFound
           )
 
         def findBySessionToken(
             token: String
-        ): EitherT[IO, Throwable, TestUser] =
+        ): EitherT[IO, AuthError, TestUser] =
           for {
             id <- EitherT.fromOptionF(
               sessions.get.map(_.get(token)),
-              new NoSuchElementException(token)
+              AuthError.SessionNotFound
             )
             user <- EitherT.fromOptionF(
               users.get.map(_.values.find(_.id == id)),
-              new NoSuchElementException(token)
+              AuthError.SessionNotFound
             )
           } yield user
 
-        def updatePassword(
-            userId: UUID,
-            password: String
-        ): EitherT[IO, Throwable, Unit] =
-          for {
-            pw <- EitherT.liftF(summon[Hashable[IO, String]].hash(password))
-            _ <- EitherT.liftF(users.update(_.map { case (k, u) =>
+        def updatePassword(userId: UUID, password: String): IO[Unit] =
+          summon[Hashable[IO, String]].hash(password).flatMap { pw =>
+            users.update(_.map { case (k, u) =>
               if (u.id == userId) (k, u.copy(password = pw)) else (k, u)
-            }))
-          } yield ()
-
-      val sessionService = new SessionService[IO, TestUser, UUID]:
-        def createSession(user: TestUser): EitherT[IO, Throwable, String] =
-          EitherT.liftF {
-            val token = s"session-${UUID.randomUUID()}"
-            sessions.update(_ + (token -> user.id)).as(token)
+            })
           }
 
-        def deleteSession(token: String): EitherT[IO, Throwable, Unit] =
-          EitherT.liftF(sessions.update(_ - token))
+      val sessionService = new SessionService[IO, TestUser, UUID]:
+        def createSession(user: TestUser): IO[String] = {
+          val token = s"session-${UUID.randomUUID()}"
+          sessions.update(_ + (token -> user.id)).as(token)
+        }
+
+        def deleteSession(token: String): IO[Unit] =
+          sessions.update(_ - token)
 
       val mailService = new MailService[IO, String, Unit]:
         def confirmationEmail(to: String, code: String): String =
@@ -137,68 +131,64 @@ trait ApolloTestKit extends CatsEffectSuite:
           s"reset|$to|$code"
         def invitationEmail(to: String, code: String): String =
           s"invite|$to|$code"
-        def send(msg: String): EitherT[IO, Throwable, Unit] =
-          EitherT.liftF(mails.update(msg :: _))
+        def send(msg: String): IO[Unit] =
+          mails.update(msg :: _)
 
       val confirmationService = new ConfirmationService[IO, TestUser, UUID]:
-        def createConfirmation(
-            user: TestUser
-        ): EitherT[IO, Throwable, String] =
-          EitherT.pure(s"confcode-${user.id}")
+        def createConfirmation(user: TestUser): IO[String] =
+          IO.pure(s"confcode-${user.id}")
 
-        def confirmByCode(code: String): OptionT[IO, Throwable] =
-          OptionT {
+        def confirmByCode(code: String): EitherT[IO, AuthError, Unit] =
+          EitherT {
             users.modify { m =>
               m.values.find(u => code == s"confcode-${u.id}") match {
                 case Some(u) =>
-                  (m + (u.email -> u.copy(confirmed = true)), None)
+                  (m + (u.email -> u.copy(confirmed = true)), Right(()))
                 case None =>
-                  (m, Some(new NoSuchElementException(code): Throwable))
+                  (m, Left(AuthError.ConfirmationNotFound))
               }
             }
           }
 
-        def isConfirmed(user: TestUser): EitherT[IO, Throwable, Boolean] =
-          EitherT.liftF(users.get.map(_.get(user.email).exists(_.confirmed)))
+        def isConfirmed(user: TestUser): IO[Boolean] =
+          users.get.map(_.get(user.email).exists(_.confirmed))
 
       val resetService = new ResetService[IO, TestUser, UUID]:
-        def createReset(user: TestUser): EitherT[IO, Throwable, String] =
-          EitherT.liftF {
-            val code = s"resetcode-${UUID.randomUUID()}"
-            resets.update(_ + (code -> user.id)).as(code)
-          }
+        def createReset(user: TestUser): IO[String] = {
+          val code = s"resetcode-${UUID.randomUUID()}"
+          resets.update(_ + (code -> user.id)).as(code)
+        }
 
-        def getReset(code: String): EitherT[IO, Throwable, Reset[UUID]] =
+        def getReset(code: String): EitherT[IO, AuthError, Reset[UUID]] =
           EitherT.fromOptionF(
             resets.get.map(_.get(code).map(Reset(_, code, Instant.EPOCH))),
-            new NoSuchElementException(code)
+            AuthError.ResetNotFound
           )
 
-        def invalidateReset(code: String): OptionT[IO, Throwable] =
-          OptionT(resets.update(_ - code).as(None: Option[Throwable]))
+        def invalidateReset(code: String): IO[Unit] =
+          resets.update(_ - code)
 
       val invitationService = new InvitationService[IO, TestUser, UUID]:
         def createInvitation(
             email: String,
             invitedBy: Option[TestUser]
-        ): EitherT[IO, Throwable, String] =
-          EitherT.liftF {
-            val code = s"invitecode-${UUID.randomUUID()}"
-            invites.update(_ + (code -> email)).as(code)
-          }
+        ): IO[String] = {
+          val code = s"invitecode-${UUID.randomUUID()}"
+          invites.update(_ + (code -> email)).as(code)
+        }
 
         def getInvitation(
             code: String
-        ): EitherT[IO, Throwable, Invitation[UUID]] =
+        ): EitherT[IO, AuthError, Invitation[UUID]] =
           EitherT.fromOptionF(
             invites.get.map(
               _.get(code).map(email => Invitation(code, email, None, Instant.EPOCH))
             ),
-            new NoSuchElementException(code)
+            AuthError.InvitationNotFound
           )
 
-        def consumeInvitation(code: String): EitherT[IO, Throwable, Unit] =
-          EitherT.liftF(invites.update(_ - code))
+        def consumeInvitation(code: String): IO[Unit] =
+          invites.update(_ - code)
 
       val services = ApolloServices[IO, TestUser, UUID, String](
         user = userService,
