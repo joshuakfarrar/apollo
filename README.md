@@ -83,6 +83,14 @@ may create invitations; pass `requireAuth = false` to let anyone request
 one (waitlist mode) — rate-limit that upstream, since it sends e-mail on
 request. Codes expire after 7 days (`invitationTtl`).
 
+### Typed errors
+
+Service methods with an expected business outcome return
+`EitherT[F, AuthError, A]` — `EmailTaken`, `UserNotFound`, `ResetNotFound`,
+and friends. Infrastructure failures (database down, driver exceptions)
+travel in `F`'s own error channel and never appear on the typed left.
+Methods that can only fail for infrastructure reasons return plain `F[A]`.
+
 ### Security notes
 
 - Session tokens and confirmation/reset codes are generated from the

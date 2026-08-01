@@ -69,7 +69,7 @@ object InvitationRoutes:
         )
       } yield ()
 
-      result.value.flatMap {
+      result.attempt.flatMap {
         case Right(_) =>
           flashRedirect(Location(uri"/"), "alert-success", "Invitation sent")
         case Left(error) =>
@@ -134,6 +134,13 @@ object InvitationRoutes:
                       maxAge = Some(3600)
                     )
                   )
+                )
+            }.handleErrorWith { error =>
+              log.error(error)("Failed to process invitation link") *>
+                flashRedirect(
+                  Location(uri"/login"),
+                  "alert-danger",
+                  "Could not process the invitation. Please try again"
                 )
             }
         }

@@ -12,12 +12,9 @@ case class Invitation[Id](
 )
 
 trait InvitationService[F[_], U, I] {
-  def createInvitation(
-      email: String,
-      invitedBy: Option[U]
-  ): EitherT[F, Throwable, String]
+  def createInvitation(email: String, invitedBy: Option[U]): F[String]
 
-  def getInvitation(code: String): EitherT[F, Throwable, Invitation[I]]
+  def getInvitation(code: String): EitherT[F, AuthError, Invitation[I]]
 
-  def consumeInvitation(code: String): EitherT[F, Throwable, Unit]
+  def consumeInvitation(code: String): F[Unit]
 }

@@ -7,14 +7,11 @@ trait UserService[F[_], U, I] {
       name: String,
       email: String,
       password: String
-  ): EitherT[F, Throwable, U]
+  ): EitherT[F, AuthError, U]
 
-  def fetchUser(email: String): EitherT[F, Throwable, U]
+  def fetchUser(email: String): EitherT[F, AuthError, U]
 
-  def findBySessionToken(sessionToken: String): EitherT[F, Throwable, U]
+  def findBySessionToken(sessionToken: String): EitherT[F, AuthError, U]
 
-  def updatePassword(
-      userId: I,
-      password: String
-  ): EitherT[F, Throwable, Unit]
+  def updatePassword(userId: I, password: String): F[Unit]
 }

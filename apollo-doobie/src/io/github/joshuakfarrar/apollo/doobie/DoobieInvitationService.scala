@@ -7,7 +7,7 @@ import cats.implicits.*
 import doobie.*
 import doobie.implicits.*
 import doobie.implicits.javatimedrivernative.*
-import io.github.joshuakfarrar.apollo.core.{HasId, Invitation, InvitationService}
+import io.github.joshuakfarrar.apollo.core.{AuthError, HasId, Invitation, InvitationService}
 import io.github.joshuakfarrar.apollo.core.util.generateAlphaNumericString
 
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
@@ -34,40 +34,34 @@ object DoobieInvitationService {
       override def createInvitation(
           email: String,
           invitedBy: Option[U]
-      ): EitherT[F, Throwable, String] = for {
-        code <- EitherT.liftF(generateAlphaNumericString[F](32))
-        _ <-
+      ): F[String] =
+        generateAlphaNumericString[F](32).flatMap { code =>
           sql"""
             INSERT INTO invitations (code, email, invited_by)
             VALUES ($code, $email, ${invitedBy.map(H.id(_).toString)}::uuid)
           """.update.run
             .transact(xa)
-            .attemptT
-      } yield code
+            .as(code)
+        }
 
       override def getInvitation(
           code: String
-      ): EitherT[F, Throwable, Invitation[I]] =
-        EitherT {
+      ): EitherT[F, AuthError, Invitation[I]] =
+        EitherT.fromOptionF(
           sql"""
             SELECT code, email, invited_by, created_at FROM invitations
             WHERE code = $code
               AND created_at > NOW() - (${invitationTtl.toSeconds} * INTERVAL '1 second')
           """
             .query[Invitation[I]]
-            .unique
-            .transact(xa)
-            .attempt
-        }
+            .option
+            .transact(xa),
+          AuthError.InvitationNotFound
+        )
 
-      override def consumeInvitation(
-          code: String
-      ): EitherT[F, Throwable, Unit] =
-        EitherT {
-          sql"DELETE FROM invitations WHERE code = $code".update.run
-            .transact(xa)
-            .attempt
-            .map(_.void)
-        }
+      override def consumeInvitation(code: String): F[Unit] =
+        sql"DELETE FROM invitations WHERE code = $code".update.run
+          .transact(xa)
+          .void
     }
 }
