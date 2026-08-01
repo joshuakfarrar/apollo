@@ -132,12 +132,28 @@ object AuthRoutes:
           }
       }
 
-    def createUser(name: String, email: String, password: String) =
+    def createUser(
+        name: String,
+        email: String,
+        password: String,
+        invite: Option[(InvitationService[F, U, I], String)]
+    ) =
       apollo.services.user.createUser(name, email, password).value.flatMap {
         case Right(user) =>
-          apollo.services.confirmation match {
+          val proceed = apollo.services.confirmation match {
             case Some(confirmation) => createConfirmation(confirmation, user)
             case None               => signIn(user)
+          }
+          invite match {
+            case None => proceed
+            case Some((invitations, code)) =>
+              invitations.consumeInvitation(code).value.flatMap {
+                case Left(error) =>
+                  log.warn(error)("Failed to consume invitation") *>
+                    proceed.map(_.removeCookie("invite"))
+                case Right(_) =>
+                  proceed.map(_.removeCookie("invite"))
+              }
           }
         case Left(error) =>
           error match {
@@ -240,7 +256,38 @@ object AuthRoutes:
                 validateRegistrationForm(parsed) match {
                   case Some(error) => registrationRedirectWithError(error)
                   case None =>
-                    createUser(parsed.name, parsed.email, parsed.password)
+                    apollo.services.invitation match {
+                      case None =>
+                        createUser(
+                          parsed.name,
+                          parsed.email,
+                          parsed.password,
+                          None
+                        )
+                      case Some(invitations) =>
+                        request.cookies
+                          .find(_.name == "invite")
+                          .map(_.content) match {
+                          case None =>
+                            registrationRedirectWithError(
+                              "Registration is by invitation only"
+                            )
+                          case Some(code) =>
+                            invitations.getInvitation(code).value.flatMap {
+                              case Left(_) =>
+                                registrationRedirectWithError(
+                                  "Invalid or expired invitation"
+                                )
+                              case Right(_) =>
+                                createUser(
+                                  parsed.name,
+                                  parsed.email,
+                                  parsed.password,
+                                  Some((invitations, code))
+                                )
+                            }
+                        }
+                    }
                 }
               case None =>
                 registrationRedirectWithError(

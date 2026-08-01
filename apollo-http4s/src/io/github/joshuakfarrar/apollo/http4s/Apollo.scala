@@ -31,13 +31,19 @@ object ApolloTemplates {
 /** When `confirmation` is `None` (the default), registration signs the
   * user in immediately and the /confirm route is not served. Provide
   * `Some(service)` to require e-mail confirmation before login.
+  *
+  * When `invitation` is `Some(service)`, registration requires a valid
+  * invitation code (delivered via the cookie that `GET /invite/:code`
+  * sets — mount [[InvitationRoutes]] for that). When `None` (the
+  * default), registration is open to anyone.
   */
 case class ApolloServices[F[_], U, I, E](
     user: UserService[F, U, I],
     mail: MailService[F, E, Unit],
     session: SessionService[F, U, I],
     reset: ResetService[F, U, I],
-    confirmation: Option[ConfirmationService[F, U, I]] = None
+    confirmation: Option[ConfirmationService[F, U, I]] = None,
+    invitation: Option[InvitationService[F, U, I]] = None
 )
 
 case class Apollo[F[_], U, I, E](

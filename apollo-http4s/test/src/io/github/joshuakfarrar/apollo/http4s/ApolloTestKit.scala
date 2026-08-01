@@ -43,17 +43,22 @@ trait ApolloTestKit extends CatsEffectSuite:
       users: Ref[IO, Map[String, TestUser]],
       sessions: Ref[IO, Map[String, UUID]],
       resets: Ref[IO, Map[String, UUID]],
+      invites: Ref[IO, Map[String, String]],
       mails: Ref[IO, List[String]],
       apollo: Apollo[IO, TestUser, UUID, String]
   ):
     def routes: HttpApp[IO] = AuthRoutes.routes(apollo).orNotFound
     def tokenKey: Key[String] = apollo.config.csrfTokenKey
 
-  def newWorld(confirmationEnabled: Boolean = false): IO[World] =
+  def newWorld(
+      confirmationEnabled: Boolean = false,
+      invitationEnabled: Boolean = false
+  ): IO[World] =
     for {
       users <- Ref.of[IO, Map[String, TestUser]](Map.empty)
       sessions <- Ref.of[IO, Map[String, UUID]](Map.empty)
       resets <- Ref.of[IO, Map[String, UUID]](Map.empty)
+      invites <- Ref.of[IO, Map[String, String]](Map.empty)
       mails <- Ref.of[IO, List[String]](List.empty)
       key <- CSRF.generateSigningKey[IO]()
       tokenKey <- Key.newKey[IO, String]
@@ -130,6 +135,8 @@ trait ApolloTestKit extends CatsEffectSuite:
           s"confirm|$to|$code"
         def resetEmail(to: String, code: String): String =
           s"reset|$to|$code"
+        def invitationEmail(to: String, code: String): String =
+          s"invite|$to|$code"
         def send(msg: String): EitherT[IO, Throwable, Unit] =
           EitherT.liftF(mails.update(msg :: _))
 
@@ -170,13 +177,38 @@ trait ApolloTestKit extends CatsEffectSuite:
         def invalidateReset(code: String): OptionT[IO, Throwable] =
           OptionT(resets.update(_ - code).as(None: Option[Throwable]))
 
+      val invitationService = new InvitationService[IO, TestUser, UUID]:
+        def createInvitation(
+            email: String,
+            invitedBy: Option[TestUser]
+        ): EitherT[IO, Throwable, String] =
+          EitherT.liftF {
+            val code = s"invitecode-${UUID.randomUUID()}"
+            invites.update(_ + (code -> email)).as(code)
+          }
+
+        def getInvitation(
+            code: String
+        ): EitherT[IO, Throwable, Invitation[UUID]] =
+          EitherT.fromOptionF(
+            invites.get.map(
+              _.get(code).map(email => Invitation(code, email, None, Instant.EPOCH))
+            ),
+            new NoSuchElementException(code)
+          )
+
+        def consumeInvitation(code: String): EitherT[IO, Throwable, Unit] =
+          EitherT.liftF(invites.update(_ - code))
+
       val services = ApolloServices[IO, TestUser, UUID, String](
         user = userService,
         mail = mailService,
         session = sessionService,
         reset = resetService,
         confirmation =
-          if (confirmationEnabled) Some(confirmationService) else None
+          if (confirmationEnabled) Some(confirmationService) else None,
+        invitation =
+          if (invitationEnabled) Some(invitationService) else None
       )
 
       val templates = ApolloTemplates(
@@ -191,6 +223,7 @@ trait ApolloTestKit extends CatsEffectSuite:
         users,
         sessions,
         resets,
+        invites,
         mails,
         Apollo(ApolloConfig[IO](tokenKey, csrf), templates, services)
       )

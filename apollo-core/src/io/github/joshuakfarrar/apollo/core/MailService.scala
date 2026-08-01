@@ -7,6 +7,7 @@ import cats.effect.std.Console
 trait MailService[F[_], Msg, Res] {
   def confirmationEmail(to: String, code: String): Msg
   def resetEmail(to: String, code: String): Msg
+  def invitationEmail(to: String, code: String): Msg
   def send(msg: Msg): EitherT[F, Throwable, Res]
 }
 
@@ -22,6 +23,9 @@ object MailService:
 
       def resetEmail(to: String, code: String): String =
         s"To: $to — reset your password: /reset/$code"
+
+      def invitationEmail(to: String, code: String): String =
+        s"To: $to — you're invited! Create your account: /invite/$code"
 
       def send(msg: String): EitherT[F, Throwable, Unit] =
         EitherT.liftF(Console[F].println(s"[apollo mail] $msg"))
