@@ -10,6 +10,7 @@ It has a few features:
 - Database registration and authentication
 - Account confirmation
 - Password recovery
+- Invitation-gated registration
 
 Long-term, we'd like to also support Omniauth and all functionality of the standard Devise module
 
@@ -60,6 +61,27 @@ mailer:
 
 When `confirmation` is `None`, the `/confirm` route is not served. When it is
 provided, login is refused until the account is confirmed.
+
+### Invitation-gated registration
+
+Make registration invite-only by providing the service and mounting the
+invitation routes:
+
+```scala
+  invitation = Some(DoobieInvitationService[F, User, UserId](xa))
+```
+
+```scala
+InvitationRoutes.routes(apollo) <+> AuthRoutes.routes(apollo)
+```
+
+`POST /invitations` (form field `email`) mails a link to `/invite/:code`;
+following it stores the code in a short-lived cookie and redirects to the
+registration form, so no template changes are needed. Registration then
+requires and consumes a valid invitation. By default only signed-in users
+may create invitations; pass `requireAuth = false` to let anyone request
+one (waitlist mode) — rate-limit that upstream, since it sends e-mail on
+request. Codes expire after 7 days (`invitationTtl`).
 
 ### Security notes
 
