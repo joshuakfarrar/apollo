@@ -28,9 +28,9 @@ Apollo ships as three artifacts so you only depend on what you need:
 
 ```scala
 mvnDeps = Seq(
-  mvn"io.github.joshuakfarrar::apollo-core:0.1.0-SNAPSHOT",
-  mvn"io.github.joshuakfarrar::apollo-http4s:0.1.0-SNAPSHOT",
-  mvn"io.github.joshuakfarrar::apollo-doobie:0.1.0-SNAPSHOT"
+  mvn"io.github.joshuakfarrar::apollo-core:0.2.0",
+  mvn"io.github.joshuakfarrar::apollo-http4s:0.2.0",
+  mvn"io.github.joshuakfarrar::apollo-doobie:0.2.0"
 )
 ```
 
