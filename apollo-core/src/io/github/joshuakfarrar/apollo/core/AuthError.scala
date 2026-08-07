@@ -12,3 +12,4 @@ enum AuthError:
   case ConfirmationNotFound
   case ResetNotFound
   case InvitationNotFound
+  case AtprotoAuthFailed

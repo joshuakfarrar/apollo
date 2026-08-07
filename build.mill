@@ -10,7 +10,7 @@ val CatsEffectVersion = "3.6.3"
 
 trait ApolloModule extends ScalaModule with PublishModule {
   def scalaVersion = "3.3.6"
-  def publishVersion = "0.2.0"
+  def publishVersion = "0.3.0-SNAPSHOT"
 
   def pomSettings = PomSettings(
     description = "A Devise-like authentication library for Http4s",
@@ -67,6 +67,8 @@ object `apollo-http4s` extends ApolloModule with TwirlModule {
   def mvnDeps = Seq(
     mvn"org.http4s::http4s-dsl:$Http4sVersion",
     mvn"org.http4s::http4s-server:$Http4sVersion",
+    // client algebra only (no backend); XrpcAtprotoAuthenticator takes a Client[F]
+    mvn"org.http4s::http4s-client:$Http4sVersion",
     mvn"org.http4s::http4s-crypto:0.2.5-RC1",
     // no M44 build of http4s-twirl exists; M38 is the latest
     mvn"org.http4s::http4s-twirl:1.0.0-M38",
