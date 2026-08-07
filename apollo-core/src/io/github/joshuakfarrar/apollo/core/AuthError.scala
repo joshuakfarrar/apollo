@@ -13,3 +13,4 @@ enum AuthError:
   case ResetNotFound
   case InvitationNotFound
   case AtprotoAuthFailed
+  case OAuthRequestNotFound

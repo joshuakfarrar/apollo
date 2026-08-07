@@ -2,7 +2,7 @@
 
 @layout {
 <h2 id="title">Sign in with atproto</h2>
-<p>Use your Atmosphere handle and an app password</p>
+<p>Use your Atmosphere handle</p>
 
 <div style="max-width: 26rem">
     @flash.map { case (cssClass, message) =>
@@ -19,20 +19,14 @@
                            id="atprotoIdentifier" placeholder="Handle (e.g. you.bsky.social)">
                 </div>
 
-                <div class="form-outline mb-4">
-                    <input class="form-control" type="password" name="password"
-                           id="atprotoAppPassword" placeholder="App password">
-                </div>
-
                 <p class="form-text">
-                    Create an app password in your PDS settings (in Bluesky:
-                    Settings &rarr; Privacy and Security &rarr; App Passwords).
-                    Never use your main account password.
+                    You'll be sent to your account's server to approve the
+                    sign-in — your password never touches this site.
                 </p>
 
                 <div class="d-grid mx-auto">
                     <button class="btn btn-primary btn-block mb-4" type="submit">
-                        Sign in
+                        Continue
                     </button>
                 </div>
 

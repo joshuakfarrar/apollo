@@ -83,6 +83,70 @@ may create invitations; pass `requireAuth = false` to let anyone request
 one (waitlist mode) — rate-limit that upstream, since it sends e-mail on
 request. Codes expire after 7 days (`invitationTtl`).
 
+### Sign in with atproto (Bluesky)
+
+Apollo implements the atproto OAuth profile — PAR, DPoP (with the nonce
+dance), PKCE, and full identity resolution (handle → DID → PDS →
+authorization server), with bidirectional handle verification and
+issuer/subject checks on the way back.
+
+```scala
+val oauthConfig = AtprotoOAuthConfig(
+  clientId = uri"https://example.com/oauth/client-metadata.json",
+  redirectUri = uri"https://example.com/atproto/callback"
+)
+
+val oauth = AtprotoOAuthClient(httpClient, oauthConfig, DoobieAtprotoOAuthRequestStore(xa))
+val identities = DoobieAtprotoIdentityService[F, User, UserId](xa)
+
+AtprotoRoutes.routes(apollo, oauth, identities) <+> AuthRoutes.routes(apollo)
+```
+
+Run migrations 005 and 006. `AtprotoRoutes` serves the client metadata
+document at `/oauth/client-metadata.json`; `clientId` must be that
+route's public HTTPS URL, because authorization servers fetch it — which
+means testing requires a publicly reachable origin (use a tunnel during
+development). First-time atproto sign-ins are provisioned as local users
+and linked by DID.
+
+Current limitations: tokens are used for authentication only and then
+discarded (Apollo is not a PDS API client); `did:web` identities are
+supported for bare domains only; confidential-client mode
+(`private_key_jwt`) is not yet implemented — Apollo registers as a
+public client, which authorization servers grant shorter session
+lifetimes.
+
+### Sign in with atproto (the Atmosphere)
+
+Production atproto OAuth — PAR, DPoP (with the nonce dance), PKCE, and
+full handle → DID → PDS → authorization-server resolution. Users sign in
+with their handle; their password never reaches your app. Mount the
+opt-in routes with an `AtprotoOAuthClient`, an identity service, and a
+shared http4s `Client`:
+
+```scala
+val oauthConfig = AtprotoOAuthConfig(
+  clientId = uri"https://your.app/oauth/client-metadata.json",
+  redirectUri = uri"https://your.app/atproto/callback"
+)
+val oauth = AtprotoOAuthClient(httpClient, oauthConfig, DoobieAtprotoOAuthRequestStore(xa))
+val identities = DoobieAtprotoIdentityService[F, User, UserId](xa)
+
+AtprotoRoutes.routes(apollo, oauth, identities) <+> AuthRoutes.routes(apollo)
+```
+
+`AtprotoRoutes` serves the required client-metadata document at
+`/oauth/client-metadata.json` (point `clientId` there), a handle form at
+`/atproto/login`, and the redirect target at `/atproto/callback`. First
+sign-in provisions and links a local user; the DID lives in
+`atproto_identities`. Requires migrations 005 and 006. The `clientId`
+and `redirectUri` must be publicly reachable HTTPS URLs — atproto's
+authorization servers fetch your metadata document directly.
+
+Provisioned atproto users currently store their DID in `users.email`
+with an unusable `users.password`, so the e-mail login path can never
+match them.
+
 ### Typed errors
 
 Service methods with an expected business outcome return
